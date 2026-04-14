@@ -1,32 +1,42 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { checklistApi, scheduleApi } from '../../services/api'
-import { CheckSquare, Square, Save, Undo2 } from 'lucide-react'
+import { checklistApi, scheduleApi, stationApi } from '../../services/api'
+import { Save, Undo2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { Checklist } from '../../types'
+import type { StationNote } from '../../types'
 
 interface ChecklistFormProps {
   scheduleId: string
   status?: string
+  stationId: string
 }
 
-export default function ChecklistForm({ scheduleId, status }: ChecklistFormProps) {
+export default function ChecklistForm({ scheduleId, status, stationId }: ChecklistFormProps) {
   const navigate = useNavigate()
-  const [checklist, setChecklist] = useState<Checklist | null>(null)
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [stationNotes, setStationNotes] = useState<StationNote[]>([])
+  const [notesLoading, setNotesLoading] = useState(false)
   const isCompleted = status === 'completed'
 
   useEffect(() => {
     loadChecklist()
   }, [scheduleId])
 
+  useEffect(() => {
+    if (!stationId) return
+    setNotesLoading(true)
+    stationApi.getNotes(stationId)
+      .then(res => setStationNotes(res.data))
+      .catch(() => {})
+      .finally(() => setNotesLoading(false))
+  }, [stationId])
+
   const loadChecklist = async () => {
     try {
       const res = await checklistApi.get(scheduleId)
-      setChecklist(res.data)
       setNotes(res.data.notes || '')
     } catch {
       // 체크리스트가 없을 수 있음
@@ -35,28 +45,12 @@ export default function ChecklistForm({ scheduleId, status }: ChecklistFormProps
     }
   }
 
-  const toggleItem = async (itemKey: string, currentValue: boolean) => {
-    if (!checklist) return
-    try {
-      const res = await checklistApi.update(scheduleId, { [itemKey]: !currentValue })
-      setChecklist(res.data)
-    } catch {
-      toast.error('업데이트 실패')
-    }
-  }
-
   const handleSave = async () => {
     setSaving(true)
     try {
-      // 1. 체크리스트 특이사항 저장
       await checklistApi.update(scheduleId, { notes })
-
-      // 2. 스케줄 상태를 completed로 변경
       await scheduleApi.update(scheduleId, { status: 'completed' })
-
       toast.success('작업이 완료되었습니다!')
-
-      // 3. 홈 화면으로 이동
       setTimeout(() => navigate(-1), 500)
     } catch {
       toast.error('저장 실패')
@@ -80,38 +74,38 @@ export default function ChecklistForm({ scheduleId, status }: ChecklistFormProps
   }
 
   if (loading) return <div className="p-4 text-center text-gray-400">로딩중...</div>
-  if (!checklist) return <div className="p-4 text-center text-gray-400">체크리스트 없음</div>
-
-  const items = [
-    { key: 'item_1', checked: checklist.item_1, label: checklist.item_1_label },
-    { key: 'item_2', checked: checklist.item_2, label: checklist.item_2_label },
-    { key: 'item_3', checked: checklist.item_3, label: checklist.item_3_label },
-    { key: 'item_4', checked: checklist.item_4, label: checklist.item_4_label },
-    { key: 'item_5', checked: checklist.item_5, label: checklist.item_5_label },
-  ]
 
   return (
-    <div className="space-y-3">
-      <h3 className="font-bold text-gray-900">A/S 체크리스트</h3>
+    <div className="space-y-4">
+      {/* 이전 특이사항 이력 */}
+      <div>
+        <p className="text-sm font-bold text-[#215288] mb-2">📋 이전 특이사항 이력</p>
+        {notesLoading ? (
+          <div className="text-xs text-gray-400 text-center py-3">로딩중...</div>
+        ) : stationNotes.length === 0 ? (
+          <div className="text-xs text-gray-400 text-center py-3 bg-gray-50 rounded-xl">
+            이전 기록이 없습니다
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-52 overflow-y-auto">
+            {stationNotes.map((item, idx) => (
+              <div
+                key={idx}
+                className="rounded-xl border border-[#215288]/20 bg-blue-50/50 p-3"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-[#215288]">{item.date}</span>
+                  <span className="text-xs text-gray-500">{item.employee}</span>
+                </div>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.note}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {items.map(({ key, checked, label }) => (
-        <button
-          key={key}
-          onClick={() => toggleItem(key, checked)}
-          className="flex items-center gap-3 w-full p-3 bg-white rounded-xl border border-gray-100 text-left"
-        >
-          {checked ? (
-            <CheckSquare size={22} className="text-green-500 flex-shrink-0" />
-          ) : (
-            <Square size={22} className="text-gray-300 flex-shrink-0" />
-          )}
-          <span className={checked ? 'text-gray-500 line-through' : 'text-gray-900'}>
-            {label}
-          </span>
-        </button>
-      ))}
-
-      <div className="pt-2">
+      {/* 특이사항 입력 */}
+      <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           특이사항
         </label>
@@ -120,7 +114,7 @@ export default function ChecklistForm({ scheduleId, status }: ChecklistFormProps
           onChange={(e) => setNotes(e.target.value)}
           placeholder="특이사항을 입력하세요..."
           rows={3}
-          className="w-full p-3 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+          className="w-full p-3 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#215288]/30"
         />
       </div>
 
@@ -138,7 +132,7 @@ export default function ChecklistForm({ scheduleId, status }: ChecklistFormProps
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full flex items-center justify-center gap-2 py-3.5 bg-kt-red text-white rounded-2xl font-bold text-base disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#215288] text-white rounded-2xl font-bold text-base disabled:opacity-50"
         >
           <Save size={20} />
           {saving ? '저장 중...' : '작업 완료 저장'}

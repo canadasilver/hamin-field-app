@@ -124,6 +124,12 @@ export interface Checklist {
   updated_at: string
 }
 
+export interface StationNote {
+  date: string
+  note: string
+  employee: string
+}
+
 export interface DashboardSummary {
   month: string
   tasks: {

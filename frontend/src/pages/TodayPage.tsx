@@ -50,6 +50,7 @@ export default function TodayPage() {
   const [gpsLoading, setGpsLoading] = useState(false)
   const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null)
   const [isOptimized, setIsOptimized] = useState(false)
+  const [completingId, setCompletingId] = useState<string | null>(null)
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -420,6 +421,22 @@ export default function TodayPage() {
     }
   }
 
+  const handleComplete = async (scheduleId: string) => {
+    if (completingId) return
+    setCompletingId(scheduleId)
+    try {
+      await scheduleApi.update(scheduleId, { status: 'completed' })
+      setSchedules(prev =>
+        prev.map(item => item.id === scheduleId ? { ...item, status: 'completed' } : item)
+      )
+      toast.success('작업 완료 처리되었습니다')
+    } catch {
+      toast.error('처리 실패')
+    } finally {
+      setCompletingId(null)
+    }
+  }
+
   const handleLogout = () => {
     logout()
     navigate('/login', { replace: true })
@@ -587,13 +604,28 @@ export default function TodayPage() {
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openNavi(s, i === 0) }}
-                  className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold flex items-center gap-1 flex-shrink-0"
-                >
-                  <Navigation size={14} />
-                  네비
-                </button>
+                <div className="flex flex-col gap-1 flex-shrink-0">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openNavi(s, i === 0) }}
+                    className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold flex items-center gap-1"
+                  >
+                    <Navigation size={14} />
+                    네비
+                  </button>
+                  {(s.status === 'pending' || s.status === 'postponed') && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleComplete(s.id) }}
+                      disabled={completingId === s.id}
+                      className="px-3 py-2 bg-[#215288] text-white rounded-xl text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {completingId === s.id
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : <CheckCircle2 size={14} />
+                      }
+                      완료
+                    </button>
+                  )}
+                </div>
               </div>
             )
           })

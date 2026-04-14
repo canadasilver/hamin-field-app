@@ -63,6 +63,7 @@ export const stationApi = {
     api.get('/stations/count', { params: fileId ? { file_id: fileId } : {} }),
   delete: (id: string) => api.delete(`/stations/${id}`),
   geocodeMissing: () => api.post('/stations/geocode-missing'),
+  getNotes: (stationId: string) => api.get(`/stations/${stationId}/notes`),
 }
 
 // --- 직원 ---

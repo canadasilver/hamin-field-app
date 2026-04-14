@@ -403,6 +403,55 @@ async def get_filters(file_id: str | None = None):
     return {"regions": sorted(regions), "teams": sorted(teams)}
 
 
+@router.get("/{station_id}/notes")
+async def get_station_notes(station_id: str):
+    """기지국별 과거 특이사항 이력 (완료된 일정의 체크리스트 notes)"""
+    db = get_supabase()
+
+    # 완료된 일정 조회 (직원 정보 포함)
+    schedules_res = (
+        db.table("schedules")
+        .select("id, scheduled_date, employees(name)")
+        .eq("station_id", station_id)
+        .eq("status", "completed")
+        .order("scheduled_date", desc=True)
+        .execute()
+    )
+
+    if not schedules_res.data:
+        return []
+
+    schedule_map = {s["id"]: s for s in schedules_res.data}
+    schedule_ids = list(schedule_map.keys())
+
+    # 특이사항 있는 체크리스트 조회
+    checklists_res = (
+        db.table("checklists")
+        .select("schedule_id, notes")
+        .in_("schedule_id", schedule_ids)
+        .not_.is_("notes", "null")
+        .neq("notes", "")
+        .execute()
+    )
+
+    result = []
+    for cl in (checklists_res.data or []):
+        note_text = (cl.get("notes") or "").strip()
+        if not note_text:
+            continue
+        sid = cl["schedule_id"]
+        sched = schedule_map.get(sid, {})
+        emp = sched.get("employees") or {}
+        result.append({
+            "date": sched.get("scheduled_date", ""),
+            "note": note_text,
+            "employee": emp.get("name", "알 수 없음") if isinstance(emp, dict) else "알 수 없음",
+        })
+
+    result.sort(key=lambda x: x["date"], reverse=True)
+    return result
+
+
 @router.get("/{station_id}")
 async def get_station(station_id: str):
     """기지국 상세"""
