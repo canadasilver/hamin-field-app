@@ -612,7 +612,7 @@ export default function TodayPage() {
                     <Navigation size={14} />
                     네비
                   </button>
-                  {(s.status === 'pending' || s.status === 'postponed') && (
+                  {s.status === 'pending' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleComplete(s.id) }}
                       disabled={completingId === s.id}

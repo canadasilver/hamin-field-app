@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapPin, Clock, ChevronRight, CalendarX2, Navigation, CheckCircle2, RefreshCw } from 'lucide-react'
+import { MapPin, Clock, ChevronRight, CalendarX2, Navigation, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react'
 import StatusBadge from '../common/StatusBadge'
 import ReassignModal from './ReassignModal'
 import type { Schedule } from '../../types'
@@ -32,14 +32,16 @@ interface ScheduleCardProps {
   displayOrder: number
   isAdmin?: boolean
   onPostpone?: () => void
+  onComplete?: () => void
   onReassigned?: (newDate: string) => void
   onClick?: () => void
 }
 
-export default function ScheduleCard({ schedule, displayOrder, isAdmin, onPostpone, onReassigned, onClick }: ScheduleCardProps) {
+export default function ScheduleCard({ schedule, displayOrder, isAdmin, onPostpone, onComplete, onReassigned, onClick }: ScheduleCardProps) {
   const station = schedule.stations
   const style = STATUS_STYLES[schedule.status] || STATUS_STYLES.pending
   const [showReassign, setShowReassign] = useState(false)
+  const [completing, setCompleting] = useState(false)
 
   const handlePostpone = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -50,6 +52,20 @@ export default function ScheduleCard({ schedule, displayOrder, isAdmin, onPostpo
       onPostpone?.()
     } catch {
       toast.error('미루기 실패')
+    }
+  }
+
+  const handleComplete = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setCompleting(true)
+    try {
+      await scheduleApi.update(schedule.id, { status: 'completed' })
+      toast.success('작업 완료 처리되었습니다')
+      onComplete?.()
+    } catch {
+      toast.error('처리 실패')
+    } finally {
+      setCompleting(false)
     }
   }
 
@@ -147,6 +163,16 @@ export default function ScheduleCard({ schedule, displayOrder, isAdmin, onPostpo
           >
             <CalendarX2 size={14} />
             내일로
+          </button>
+        )}
+        {schedule.status === 'pending' && (
+          <button
+            onClick={handleComplete}
+            disabled={completing}
+            className="flex items-center gap-1 px-3 py-1.5 bg-[#215288] text-white rounded-lg text-xs font-medium disabled:opacity-50"
+          >
+            {completing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+            작업완료
           </button>
         )}
         <div className="flex-1" />

@@ -243,6 +243,7 @@ export default function HomePage() {
                 displayOrder={index + 1}
                 isAdmin={isAdmin}
                 onPostpone={loadSchedules}
+                onComplete={loadSchedules}
                 onReassigned={(newDate) => {
                   if (newDate !== selectedDate) {
                     setSelectedDate(newDate)
