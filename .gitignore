@@ -1,0 +1,36 @@
+# 환경변수
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.DS_Store
+
+# 업로드 파일 / 엑셀
+*.xlsx
+*.xls
+*.JPG
+*.jpg
+*.png
+
+# 기타
+*.log
+.idea/
+.vscode/
+
+# 민감 정보 포함 파일
+하민공조 KT 유지보수 프로그램.txt
