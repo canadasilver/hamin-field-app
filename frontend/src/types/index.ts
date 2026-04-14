@@ -24,6 +24,17 @@ export interface CoolingInfo {
   acquired: string | null
 }
 
+export interface CoolingUnit {
+  id: string
+  station_id: string
+  unit_number: number
+  capacity: string | null
+  manufacturer: string | null
+  acquisition_date: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Station {
   id: string
   file_id: string | null

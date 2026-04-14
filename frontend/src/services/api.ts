@@ -113,6 +113,14 @@ export const scheduleApi = {
   }) => api.post('/schedules/gps-event', null, { params: data }),
 }
 
+// --- 냉방기 ---
+export const coolingUnitApi = {
+  list: (stationId: string) => api.get(`/cooling-units/${stationId}`),
+  create: (data: any) => api.post('/cooling-units', data),
+  update: (id: string, data: any) => api.patch(`/cooling-units/${id}`, data),
+  remove: (id: string) => api.delete(`/cooling-units/${id}`),
+}
+
 // --- 체크리스트 ---
 export const checklistApi = {
   get: (scheduleId: string) => api.get(`/checklists/${scheduleId}`),
