@@ -161,7 +161,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <Header
-        title="KT 현장관리"
+        title="하민공조 현장관리"
         right={
           <button
             onClick={handleOptimize}

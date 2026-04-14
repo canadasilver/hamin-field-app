@@ -384,7 +384,7 @@ export default function AssignmentPage() {
                   <label
                     key={emp.id}
                     className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                      selectedEmpIds.includes(emp.id) ? 'border-kt-red bg-red-50' : 'border-gray-100 hover:bg-gray-50'
+                      selectedEmpIds.includes(emp.id) ? 'border-kt-red bg-blue-50' : 'border-gray-100 hover:bg-gray-50'
                     }`}
                   >
                     <input type="checkbox" checked={selectedEmpIds.includes(emp.id)}
@@ -540,7 +540,7 @@ export default function AssignmentPage() {
                   <button key={a.employee_id} onClick={() => handleReassign(a.employee_id)}
                     disabled={a.employee_id === reassignTarget.currentEmpId}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                      a.employee_id === reassignTarget.currentEmpId ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-gray-200 hover:border-kt-red hover:bg-red-50'
+                      a.employee_id === reassignTarget.currentEmpId ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-gray-200 hover:border-kt-red hover:bg-blue-50'
                     }`}>
                     <div className="w-4 h-4 rounded-full" style={{ background: a.color }} />
                     <span className="font-medium flex-1 text-left">{a.employee_name}</span>

@@ -140,7 +140,7 @@ function StatCard({
   const base = 'text-center py-2.5 rounded-xl w-full transition-all'
   const interactive = onClick
     ? selected
-      ? 'cursor-pointer ring-2 ring-kt-red bg-red-50 scale-[0.97]'
+      ? 'cursor-pointer ring-2 ring-kt-red bg-blue-50 scale-[0.97]'
       : 'cursor-pointer hover:bg-gray-50 active:scale-[0.97]'
     : 'cursor-default'
   return (
@@ -206,7 +206,7 @@ function TaskListPanel({
   return (
     <div className="bg-white rounded-2xl border-2 border-kt-red/30 overflow-hidden">
       {/* 헤더 */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-red-50 border-b border-kt-red/20">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50 border-b border-kt-red/20">
         <span className="text-sm font-bold text-gray-900">{title}</span>
         <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-gray-700">
           <X size={15} />

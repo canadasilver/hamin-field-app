@@ -5,7 +5,7 @@ export default {
     extend: {
       colors: {
         kt: {
-          red: '#E4002B',
+          red: '#215288',
           dark: '#1A1A1A',
           gray: '#F5F5F5',
         },
