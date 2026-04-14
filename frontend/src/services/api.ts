@@ -89,6 +89,7 @@ export const employeeApi = {
 export const scheduleApi = {
   list: (params?: { employee_id?: string; scheduled_date?: string; status?: string }) =>
     api.get('/schedules/', { params }),
+  getById: (id: string) => api.get(`/schedules/${id}`),
   create: (data: any) => api.post('/schedules/', data),
   update: (id: string, data: any) => api.patch(`/schedules/${id}`, data),
   postpone: (id: string) => api.post(`/schedules/${id}/postpone`),

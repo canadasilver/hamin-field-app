@@ -13,16 +13,21 @@ export default function ScheduleDetailPage() {
 
   useEffect(() => {
     if (!id) return
-    scheduleApi.list({}).then(res => {
-      const found = res.data.find((s: Schedule) => s.id === id)
-      if (found) setSchedule(found)
-    })
+    scheduleApi.getById(id)
+      .then(res => setSchedule(res.data))
+      .catch(() => {})
   }, [id])
 
   if (!schedule) return <div className="p-8 text-center text-gray-400">로딩중...</div>
 
   const station = schedule.stations
-  const coolingInfo = station?.cooling_info ?? []
+
+  const parseCoolingInfo = (raw: any) => {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    try { return JSON.parse(raw) } catch { return [] }
+  }
+  const coolingInfo = parseCoolingInfo(station?.cooling_info)
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">

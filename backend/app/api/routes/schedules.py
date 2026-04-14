@@ -54,6 +54,22 @@ async def create_schedule(schedule: ScheduleCreate):
     return result.data[0]
 
 
+@router.get("/{schedule_id}")
+async def get_schedule(schedule_id: str):
+    """단일 일정 조회 (기지국 정보 포함)"""
+    db = get_supabase()
+    result = (
+        db.table("schedules")
+        .select("*, stations(*)")
+        .eq("id", schedule_id)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(404, "일정을 찾을 수 없습니다.")
+    return result.data
+
+
 @router.patch("/{schedule_id}", response_model=ScheduleResponse)
 async def update_schedule(schedule_id: str, data: ScheduleUpdate):
     """일정 상태 변경"""
