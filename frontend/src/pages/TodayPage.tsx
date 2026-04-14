@@ -49,6 +49,7 @@ export default function TodayPage() {
   const [reassignTarget, setReassignTarget] = useState<Schedule | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null)
+  const [isOptimized, setIsOptimized] = useState(false)
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -222,8 +223,33 @@ export default function TodayPage() {
         const lng = position.coords.longitude
         setCurrentLoc({ lat, lng })
         try {
-          await scheduleApi.optimizeRoute(user!.employee_id!, today, lat, lng)
-          await loadSchedules()
+          // 직선거리 계산 (Haversine)
+          const calcDist = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+            const R = 6371
+            const dLat = (lat2 - lat1) * Math.PI / 180
+            const dLng = (lng2 - lng1) * Math.PI / 180
+            const a = Math.sin(dLat / 2) ** 2
+              + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+          }
+
+          // 좌표 있는 것은 거리순 정렬, 없는 것은 뒤로
+          const withCoords = schedules.filter(s => s.stations?.lat && s.stations?.lng)
+          const withoutCoords = schedules.filter(s => !s.stations?.lat || !s.stations?.lng)
+          const sorted = [...withCoords].sort((a, b) =>
+            calcDist(lat, lng, a.stations!.lat!, a.stations!.lng!) -
+            calcDist(lat, lng, b.stations!.lat!, b.stations!.lng!)
+          )
+          const newOrder = [...sorted, ...withoutCoords]
+
+          // DB sort_order 업데이트 (병렬)
+          await Promise.all(
+            newOrder.map((s, i) => scheduleApi.update(s.id, { sort_order: i }))
+          )
+
+          // 로컬 상태 직접 갱신 — 재조회 없이 확정된 순서 유지
+          setSchedules(newOrder)
+          setIsOptimized(true)
           toast.success('현재 위치 기준으로 동선을 재계산했습니다')
         } catch {
           toast.error('동선 최적화 실패')
@@ -241,7 +267,7 @@ export default function TodayPage() {
       },
       { timeout: 10000, maximumAge: 60000 }
     )
-  }, [user, today, loadSchedules])
+  }, [schedules])
 
   // 4단계: 데이터 + 지도 준비되면 마커 그리기
   useEffect(() => {
@@ -458,10 +484,16 @@ export default function TodayPage() {
             <button
               onClick={handleOptimizeByGPS}
               disabled={gpsLoading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors"
+              className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${
+                isOptimized
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-kt-red hover:bg-blue-700 text-white'
+              }`}
             >
               {gpsLoading ? (
                 <><Loader2 size={16} className="animate-spin" />위치 확인 중...</>
+              ) : isOptimized ? (
+                <><LocateFixed size={16} />최적화 완료 · 다시 계산하기</>
               ) : (
                 <><LocateFixed size={16} />현재 위치 기준 동선 최적화</>
               )}
