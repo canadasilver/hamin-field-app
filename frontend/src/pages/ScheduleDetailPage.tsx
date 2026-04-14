@@ -5,7 +5,7 @@ import ChecklistForm from '../components/checklist/ChecklistForm'
 import StatusBadge from '../components/common/StatusBadge'
 import { scheduleApi } from '../services/api'
 import { MapPin, Phone, User, Wrench, Wind, Calendar, Package, Factory } from 'lucide-react'
-import type { Schedule } from '../types'
+import type { Schedule, CoolingInfo } from '../types'
 
 export default function ScheduleDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -22,10 +22,13 @@ export default function ScheduleDetailPage() {
 
   const station = schedule.stations
 
-  const parseCoolingInfo = (raw: any) => {
+  const parseCoolingInfo = (raw: unknown): CoolingInfo[] => {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    try { return JSON.parse(raw) } catch { return [] }
+    if (Array.isArray(raw)) return raw as CoolingInfo[]
+    if (typeof raw === 'string') {
+      try { return JSON.parse(raw) as CoolingInfo[] } catch { return [] }
+    }
+    return []
   }
   const coolingInfo = parseCoolingInfo(station?.cooling_info)
 
