@@ -382,10 +382,14 @@ async def get_annual_stats(year: Optional[int] = Query(None)):
     }
     emp_data: dict[str, dict] = {}
 
-    for sid, s in station_best.items():
+    # 유효일 기준 해당 연도 범위 내 기지국만 추출 (totals와 월별 집계 모두 동일 기준 사용)
+    in_range = {
+        sid: s for sid, s in station_best.items()
+        if start_date <= _effective_date(s) < end_date
+    }
+
+    for sid, s in in_range.items():
         eff = _effective_date(s)
-        if eff < start_date or eff >= end_date:
-            continue
         month_num = int(eff.split("-")[1])
         status = s["status"]
         monthly[month_num]["total"] += 1
@@ -420,10 +424,10 @@ async def get_annual_stats(year: Optional[int] = Query(None)):
             "annual_pay": d["completed"] * emp["per_task_rate"],
         })
 
-    total_all = len(station_best)
-    total_completed = sum(1 for s in station_best.values() if s["status"] == "completed")
-    total_pending = sum(1 for s in station_best.values() if s["status"] == "pending")
-    total_postponed = sum(1 for s in station_best.values() if s["status"] == "postponed")
+    total_all = len(in_range)
+    total_completed = sum(1 for s in in_range.values() if s["status"] == "completed")
+    total_pending = sum(1 for s in in_range.values() if s["status"] == "pending")
+    total_postponed = sum(1 for s in in_range.values() if s["status"] == "postponed")
 
     return {
         "year": year,
@@ -504,10 +508,14 @@ async def get_monthly_detail(
     emp_data: dict[str, dict] = {}
     station_list = []
 
-    for sid, s in station_best.items():
+    # 유효일 기준 해당 월 범위 내 기지국만 추출 (totals와 주차 집계 모두 동일 기준 사용)
+    in_range = {
+        sid: s for sid, s in station_best.items()
+        if start_date <= _effective_date(s) < end_date
+    }
+
+    for sid, s in in_range.items():
         eff = _effective_date(s)
-        if eff < start_date or eff >= end_date:
-            continue
         day_num = int(eff.split("-")[2])
         week_num = min(5, (day_num - 1) // 7 + 1)
         status = s["status"]
@@ -556,10 +564,10 @@ async def get_monthly_detail(
             "monthly_pay": d["completed"] * emp["per_task_rate"],
         })
 
-    total_all = len(station_best)
-    total_completed = sum(1 for s in station_best.values() if s["status"] == "completed")
-    total_pending = sum(1 for s in station_best.values() if s["status"] == "pending")
-    total_postponed = sum(1 for s in station_best.values() if s["status"] == "postponed")
+    total_all = len(in_range)
+    total_completed = sum(1 for s in in_range.values() if s["status"] == "completed")
+    total_pending = sum(1 for s in in_range.values() if s["status"] == "pending")
+    total_postponed = sum(1 for s in in_range.values() if s["status"] == "postponed")
 
     return {
         "year": year,
