@@ -121,6 +121,17 @@ export const scheduleApi = {
   }) => api.post('/schedules/gps-event', null, { params: data }),
 }
 
+// --- 작업 이력 ---
+export const workHistoryApi = {
+  list: (stationId: string) =>
+    api.get('/work-history/', { params: { station_id: stationId } }),
+  create: (data: { station_id: string; schedule_id?: string; content: string; date?: string }) =>
+    api.post('/work-history/', data),
+  update: (id: string, data: { content: string; date?: string }) =>
+    api.put(`/work-history/${id}`, data),
+  delete: (id: string) => api.delete(`/work-history/${id}`),
+}
+
 // --- 냉방기 ---
 export const coolingUnitApi = {
   list: (stationId: string) => api.get(`/cooling-units/${stationId}`),

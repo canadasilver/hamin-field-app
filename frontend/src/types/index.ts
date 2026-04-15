@@ -136,6 +136,17 @@ export interface StationNote {
   employee: string
 }
 
+export interface WorkHistory {
+  id: string
+  station_id: string
+  schedule_id: string | null
+  content: string
+  date: string
+  employee_id: string | null
+  employee_name: string | null
+  created_at: string
+}
+
 export interface DashboardSummary {
   month: string
   tasks: {

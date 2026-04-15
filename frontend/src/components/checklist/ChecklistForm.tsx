@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { checklistApi, scheduleApi, stationApi } from '../../services/api'
-import { Save, Undo2, BookOpen } from 'lucide-react'
+import { checklistApi, scheduleApi, workHistoryApi } from '../../services/api'
+import { useAuth } from '../../contexts/AuthContext'
+import { Save, Undo2, BookOpen, Pencil, Trash2, X, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { StationNote, Station } from '../../types'
+import type { Station, WorkHistory } from '../../types'
 
 interface ChecklistFormProps {
   scheduleId: string
@@ -14,13 +15,18 @@ interface ChecklistFormProps {
 
 export default function ChecklistForm({ scheduleId, status, stationId, station }: ChecklistFormProps) {
   const navigate = useNavigate()
+  const { user, isAdmin } = useAuth()
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingHistory, setSavingHistory] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const [stationNotes, setStationNotes] = useState<StationNote[]>([])
-  const [notesLoading, setNotesLoading] = useState(false)
+  const [workHistories, setWorkHistories] = useState<WorkHistory[]>([])
+  const [historiesLoading, setHistoriesLoading] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const isCompleted = status === 'completed'
 
   const today = new Date().toISOString().split('T')[0]
@@ -31,7 +37,7 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
 
   useEffect(() => {
     if (!stationId) return
-    loadStationNotes()
+    loadWorkHistory()
   }, [stationId])
 
   const loadChecklist = async () => {
@@ -45,12 +51,12 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
     }
   }
 
-  const loadStationNotes = () => {
-    setNotesLoading(true)
-    stationApi.getNotes(stationId)
-      .then(res => setStationNotes(res.data))
+  const loadWorkHistory = () => {
+    setHistoriesLoading(true)
+    workHistoryApi.list(stationId)
+      .then(res => setWorkHistories(res.data))
       .catch(() => {})
-      .finally(() => setNotesLoading(false))
+      .finally(() => setHistoriesLoading(false))
   }
 
   // 작업 완료 저장 (상태 변경 포함)
@@ -69,7 +75,7 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
     }
   }
 
-  // 작업 이력 저장 (상태 변경 없음 - 항상 가능)
+  // 작업 이력 저장 (상태 변경 없음)
   const handleSaveHistory = async () => {
     if (!notes.trim()) {
       toast.error('작업 이력을 입력하세요')
@@ -77,11 +83,16 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
     }
     setSavingHistory(true)
     try {
-      const datedNotes = `${today}: ${notes.trim()}`
-      await checklistApi.update(scheduleId, { notes: datedNotes })
-      toast.success('작업 이력이 저장되었습니다')
+      const res = await workHistoryApi.create({
+        station_id: stationId,
+        schedule_id: scheduleId,
+        content: notes.trim(),
+        date: today,
+      })
+      // 입력란 초기화 후 목록 최신순 추가
       setNotes('')
-      loadStationNotes()
+      setWorkHistories(prev => [res.data, ...prev])
+      toast.success('작업 이력이 저장되었습니다')
     } catch {
       toast.error('저장 실패')
     } finally {
@@ -103,6 +114,56 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
     }
   }
 
+  const startEdit = (item: WorkHistory) => {
+    setEditingId(item.id)
+    setEditContent(item.content)
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditContent('')
+  }
+
+  const handleEditSave = async (id: string) => {
+    if (!editContent.trim()) return
+    setEditSaving(true)
+    try {
+      const res = await workHistoryApi.update(id, { content: editContent.trim() })
+      setWorkHistories(prev => prev.map(h => h.id === id ? res.data : h))
+      setEditingId(null)
+      toast.success('수정되었습니다')
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        toast.error('수정 권한이 없습니다')
+      } else {
+        toast.error('수정 실패')
+      }
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('이 작업 이력을 삭제하시겠습니까?')) return
+    setDeletingId(id)
+    try {
+      await workHistoryApi.delete(id)
+      setWorkHistories(prev => prev.filter(h => h.id !== id))
+      toast.success('삭제되었습니다')
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        toast.error('삭제 권한이 없습니다')
+      } else {
+        toast.error('삭제 실패')
+      }
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const canModify = (item: WorkHistory) =>
+    isAdmin || (!!user?.employee_id && item.employee_id === user.employee_id)
+
   if (loading) return <div className="p-4 text-center text-gray-400">로딩중...</div>
 
   // work_2021~2024 연도별 이력 (값 있는 것만)
@@ -113,13 +174,13 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
     { year: '2024년', value: station?.work_2024 },
   ].filter(h => h.value)
 
-  const hasAnyHistory = yearHistory.length > 0 || stationNotes.length > 0
+  const hasAnyHistory = yearHistory.length > 0 || workHistories.length > 0
 
   return (
     <div className="space-y-4">
       {/* 작업 이력 */}
       <div>
-        <p className="text-sm font-bold text-[#215288] mb-2">📋 작업 이력</p>
+        <p className="text-sm font-bold text-[#215288] mb-2">작업 이력</p>
 
         {/* 연도별 이력 (work_2021~2024) */}
         {yearHistory.length > 0 && (
@@ -133,25 +194,79 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
           </div>
         )}
 
-        {/* 직원 입력 이력 (체크리스트 notes) */}
-        {notesLoading ? (
+        {/* 직원 입력 이력 */}
+        {historiesLoading ? (
           <div className="text-xs text-gray-400 text-center py-3">로딩중...</div>
         ) : !hasAnyHistory ? (
           <div className="text-xs text-gray-400 text-center py-3 bg-gray-50 rounded-xl">
             이전 기록이 없습니다
           </div>
-        ) : stationNotes.length > 0 ? (
+        ) : workHistories.length > 0 ? (
           <div className="space-y-2 max-h-52 overflow-y-auto">
-            {stationNotes.map((item, idx) => (
+            {workHistories.map(item => (
               <div
-                key={idx}
+                key={item.id}
                 className="rounded-xl border border-[#215288]/20 bg-blue-50/50 p-3"
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-[#215288]">{item.date}</span>
-                  <span className="text-xs text-gray-500">{item.employee}</span>
-                </div>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.note}</p>
+                {editingId === item.id ? (
+                  /* 편집 모드 */
+                  <div className="space-y-2">
+                    <textarea
+                      value={editContent}
+                      onChange={e => setEditContent(e.target.value)}
+                      rows={2}
+                      className="w-full p-2 border border-[#215288]/40 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#215288]/30"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditSave(item.id)}
+                        disabled={editSaving || !editContent.trim()}
+                        className="flex items-center gap-1 px-3 py-1 bg-[#215288] text-white rounded-lg text-xs font-medium disabled:opacity-50"
+                      >
+                        <Check size={12} />
+                        {editSaving ? '저장 중...' : '저장'}
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        disabled={editSaving}
+                        className="flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium"
+                      >
+                        <X size={12} />
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 보기 모드 */
+                  <>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-[#215288]">{item.date}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-500">{item.employee_name || '알 수 없음'}</span>
+                        {canModify(item) && (
+                          <>
+                            <button
+                              onClick={() => startEdit(item)}
+                              className="p-1 text-gray-400 hover:text-[#215288]"
+                              title="수정"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              disabled={deletingId === item.id}
+                              className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-50"
+                              title="삭제"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.content}</p>
+                  </>
+                )}
               </div>
             ))}
           </div>

@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
-from app.api.routes import auth, stations, employees, schedules, checklists, dashboard, assignment, cooling_units
+from app.api.routes import auth, stations, employees, schedules, checklists, dashboard, assignment, cooling_units, work_history
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ app.include_router(checklists.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(assignment.router, prefix="/api")
 app.include_router(cooling_units.router, prefix="/api")
+app.include_router(work_history.router, prefix="/api")
 
 
 @app.get("/")
