@@ -17,24 +17,46 @@ def _month_range(month: str):
 
 
 def _fetch_month_schedules(db, start_date: str, end_date: str):
-    """해당 월 스케줄 전체 조회 (페이징 처리)"""
-    all_data = []
-    offset = 0
-    page_size = 1000
-    while True:
-        res = (
-            db.table("schedules")
-            .select("id, station_id, employee_id, scheduled_date, status")
-            .gte("scheduled_date", start_date)
-            .lt("scheduled_date", end_date)
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        all_data.extend(res.data)
-        if len(res.data) < page_size:
-            break
-        offset += page_size
-    return all_data
+    """해당 기간 스케줄 전체 조회.
+    scheduled_date 기준 + 완료된 스케줄은 completed_at 기준도 병합 (페이징 처리)"""
+    _select = "id, station_id, employee_id, scheduled_date, status, completed_at"
+    _size = 1000
+
+    def _paged_sched():
+        data, offset = [], 0
+        while True:
+            res = (
+                db.table("schedules").select(_select)
+                .gte("scheduled_date", start_date).lt("scheduled_date", end_date)
+                .range(offset, offset + _size - 1).execute()
+            )
+            data.extend(res.data)
+            if len(res.data) < _size:
+                break
+            offset += _size
+        return data
+
+    def _paged_completed():
+        data, offset = [], 0
+        while True:
+            res = (
+                db.table("schedules").select(_select)
+                .eq("status", "completed")
+                .gte("completed_at", start_date).lt("completed_at", end_date)
+                .range(offset, offset + _size - 1).execute()
+            )
+            data.extend(res.data)
+            if len(res.data) < _size:
+                break
+            offset += _size
+        return data
+
+    merged: dict = {}
+    for item in _paged_sched():
+        merged[item["id"]] = item
+    for item in _paged_completed():
+        merged[item["id"]] = item
+    return list(merged.values())
 
 
 def _dedupe_stations(schedules: list[dict]) -> dict[str, dict]:
@@ -67,6 +89,13 @@ def _dedupe_stations(schedules: list[dict]) -> dict[str, dict]:
                     station_best[sid] = s
 
     return station_best
+
+
+def _effective_date(s: dict) -> str:
+    """완료된 스케줄은 completed_at 날짜, 그 외는 scheduled_date 기준으로 집계 날짜 반환"""
+    if s.get("status") == "completed" and s.get("completed_at"):
+        return str(s["completed_at"])[:10]
+    return s["scheduled_date"]
 
 
 @router.get("/summary")
@@ -169,22 +198,40 @@ async def get_task_list(
     start_date, end_date = _month_range(month)
 
     # 스케줄 + 기지국 + 직원 조인 조회
-    all_data = []
+    _tlsel = "id, station_id, employee_id, scheduled_date, status, completed_at, stations(station_name, address), employees(name)"
+    _tlsize = 1000
+    all_data_map: dict[str, dict] = {}
+
+    # 1) scheduled_date 기준
     offset = 0
-    page_size = 1000
     while True:
         res = (
-            db.table("schedules")
-            .select("id, station_id, employee_id, scheduled_date, status, stations(station_name, address), employees(name)")
-            .gte("scheduled_date", start_date)
-            .lt("scheduled_date", end_date)
-            .range(offset, offset + page_size - 1)
-            .execute()
+            db.table("schedules").select(_tlsel)
+            .gte("scheduled_date", start_date).lt("scheduled_date", end_date)
+            .range(offset, offset + _tlsize - 1).execute()
         )
-        all_data.extend(res.data)
-        if len(res.data) < page_size:
+        for item in res.data:
+            all_data_map[item["id"]] = item
+        if len(res.data) < _tlsize:
             break
-        offset += page_size
+        offset += _tlsize
+
+    # 2) 완료 스케줄 중 completed_at이 해당 월인 것
+    offset = 0
+    while True:
+        res = (
+            db.table("schedules").select(_tlsel)
+            .eq("status", "completed")
+            .gte("completed_at", start_date).lt("completed_at", end_date)
+            .range(offset, offset + _tlsize - 1).execute()
+        )
+        for item in res.data:
+            all_data_map[item["id"]] = item
+        if len(res.data) < _tlsize:
+            break
+        offset += _tlsize
+
+    all_data = list(all_data_map.values())
 
     # 고유 station_id별 최종 상태 및 정보 결정 (summary와 동일 로직)
     STATUS_PRIORITY = {"completed": 10, "in_progress": 9, "pending": 2, "postponed": 1}
@@ -222,6 +269,7 @@ async def get_task_list(
             "address": station_info.get("address", ""),
             "employee_name": employee_info.get("name", ""),
             "scheduled_date": s["scheduled_date"],
+            "effective_date": _effective_date(s),
             "status": s["status"],
         }
         if status and status != "all":
@@ -230,7 +278,7 @@ async def get_task_list(
         else:
             result.append(item)
 
-    result.sort(key=lambda x: x["scheduled_date"])
+    result.sort(key=lambda x: x["effective_date"])
     return result
 
 
@@ -289,22 +337,40 @@ async def get_annual_stats(year: Optional[int] = Query(None)):
     start_date = f"{year}-01-01"
     end_date = f"{year + 1}-01-01"
 
-    all_data: list[dict] = []
+    _asel = "id, station_id, employee_id, scheduled_date, status, completed_at"
+    _asize = 1000
+    all_data_map: dict[str, dict] = {}
+
+    # 1) scheduled_date 기준
     offset = 0
-    page_size = 1000
     while True:
         res = (
-            db.table("schedules")
-            .select("station_id, employee_id, scheduled_date, status")
-            .gte("scheduled_date", start_date)
-            .lt("scheduled_date", end_date)
-            .range(offset, offset + page_size - 1)
-            .execute()
+            db.table("schedules").select(_asel)
+            .gte("scheduled_date", start_date).lt("scheduled_date", end_date)
+            .range(offset, offset + _asize - 1).execute()
         )
-        all_data.extend(res.data)
-        if len(res.data) < page_size:
+        for item in res.data:
+            all_data_map[item["id"]] = item
+        if len(res.data) < _asize:
             break
-        offset += page_size
+        offset += _asize
+
+    # 2) 완료 스케줄 중 completed_at이 해당 연도인 것 (scheduled_date가 다른 연도일 수 있음)
+    offset = 0
+    while True:
+        res = (
+            db.table("schedules").select(_asel)
+            .eq("status", "completed")
+            .gte("completed_at", start_date).lt("completed_at", end_date)
+            .range(offset, offset + _asize - 1).execute()
+        )
+        for item in res.data:
+            all_data_map[item["id"]] = item
+        if len(res.data) < _asize:
+            break
+        offset += _asize
+
+    all_data = list(all_data_map.values())
 
     # 고유 station_id 기준 중복 제거
     station_best = _dedupe_stations(all_data)
@@ -317,7 +383,10 @@ async def get_annual_stats(year: Optional[int] = Query(None)):
     emp_data: dict[str, dict] = {}
 
     for sid, s in station_best.items():
-        month_num = int(s["scheduled_date"].split("-")[1])
+        eff = _effective_date(s)
+        if eff < start_date or eff >= end_date:
+            continue
+        month_num = int(eff.split("-")[1])
         status = s["status"]
         monthly[month_num]["total"] += 1
         if status in ("completed", "pending", "postponed"):
@@ -386,25 +455,43 @@ async def get_monthly_detail(
     start_date = f"{year}-{month:02d}-01"
     end_date = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
 
-    all_data: list[dict] = []
+    _msel = (
+        "id, station_id, employee_id, scheduled_date, status, completed_at,"
+        " stations(station_name), employees(name)"
+    )
+    _msize = 1000
+    all_data_map: dict[str, dict] = {}
+
+    # 1) scheduled_date 기준
     offset = 0
-    page_size = 1000
     while True:
         res = (
-            db.table("schedules")
-            .select(
-                "id, station_id, employee_id, scheduled_date, status, completed_at,"
-                " stations(station_name), employees(name)"
-            )
-            .gte("scheduled_date", start_date)
-            .lt("scheduled_date", end_date)
-            .range(offset, offset + page_size - 1)
-            .execute()
+            db.table("schedules").select(_msel)
+            .gte("scheduled_date", start_date).lt("scheduled_date", end_date)
+            .range(offset, offset + _msize - 1).execute()
         )
-        all_data.extend(res.data)
-        if len(res.data) < page_size:
+        for item in res.data:
+            all_data_map[item["id"]] = item
+        if len(res.data) < _msize:
             break
-        offset += page_size
+        offset += _msize
+
+    # 2) 완료 스케줄 중 completed_at이 해당 월인 것
+    offset = 0
+    while True:
+        res = (
+            db.table("schedules").select(_msel)
+            .eq("status", "completed")
+            .gte("completed_at", start_date).lt("completed_at", end_date)
+            .range(offset, offset + _msize - 1).execute()
+        )
+        for item in res.data:
+            all_data_map[item["id"]] = item
+        if len(res.data) < _msize:
+            break
+        offset += _msize
+
+    all_data = list(all_data_map.values())
 
     # 고유 station_id 기준 중복 제거
     station_best = _dedupe_stations(all_data)
@@ -418,7 +505,10 @@ async def get_monthly_detail(
     station_list = []
 
     for sid, s in station_best.items():
-        day_num = int(s["scheduled_date"].split("-")[2])
+        eff = _effective_date(s)
+        if eff < start_date or eff >= end_date:
+            continue
+        day_num = int(eff.split("-")[2])
         week_num = min(5, (day_num - 1) // 7 + 1)
         status = s["status"]
 

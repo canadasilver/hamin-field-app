@@ -24,6 +24,24 @@ def _safe_str(val) -> str:
     return str(val).strip()
 
 
+def _extract_date_str(val: str) -> str | None:
+    """점검일자 문자열에서 YYYY-MM-DD 형식 추출.
+    예) "2025-10-15 00:00:00" → "2025-10-15", "2025-10" → "2025-10-01"
+    """
+    if not val:
+        return None
+    date_part = val.strip().split()[0].split("T")[0]
+    segs = date_part.split("-")
+    try:
+        if len(segs) >= 3:
+            return f"{int(segs[0]):04d}-{int(segs[1]):02d}-{int(segs[2]):02d}"
+        elif len(segs) == 2:
+            return f"{int(segs[0]):04d}-{int(segs[1]):02d}-01"
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
 # 국소명 컬럼으로 인식할 이름들
 STATION_NAME_ALIASES = {"국소명", "기지국명", "국소 명"}
 
@@ -365,15 +383,17 @@ async def upload_excel(file: UploadFile = File(...)):
             # 담당직원 있으면 스케줄 자동 배분
             if employee_name and employee_name in emp_name_map:
                 emp_id = emp_name_map[employee_name]
-                today = _date.today().isoformat()
-                key = (emp_id, today)
+                # 점검일자 있으면 해당 날짜로, 없으면 오늘
+                parsed_date = _extract_date_str(inspection_date) if inspection_date else None
+                sched_date = parsed_date or _date.today().isoformat()
+                key = (emp_id, sched_date)
                 sort_order = sort_order_counter.get(key, 0)
                 sort_order_counter[key] = sort_order + 1
 
                 schedule_data: dict = {
                     "station_id": station_id,
                     "employee_id": emp_id,
-                    "scheduled_date": today,
+                    "scheduled_date": sched_date,
                     "sort_order": sort_order,
                 }
                 if inspection_date:
