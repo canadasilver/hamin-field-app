@@ -114,10 +114,17 @@ export default function EmployeesPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('비활성화하시겠습니까?')) return
+  const handleToggleActive = async (emp: Employee) => {
+    const next = !emp.is_active
+    await employeeApi.update(emp.id, { is_active: next })
+    toast.success(next ? '활성화되었습니다' : '비활성화되었습니다')
+    loadEmployees()
+  }
+
+  const handlePermanentDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까? 복구할 수 없습니다.')) return
     await employeeApi.delete(id)
-    toast.success('비활성화되었습니다')
+    toast.success('삭제되었습니다')
     loadEmployees()
   }
 
@@ -426,7 +433,17 @@ export default function EmployeesPage() {
                   <button onClick={() => openEditModal(emp)} className="p-1.5 text-gray-300 hover:text-blue-500">
                     <Pencil size={16} />
                   </button>
-                  <button onClick={() => handleDelete(emp.id)} className="p-1.5 text-gray-300 hover:text-red-500">
+                  <button
+                    onClick={() => handleToggleActive(emp)}
+                    className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      emp.is_active
+                        ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        : 'bg-green-50 text-green-600 hover:bg-green-100'
+                    }`}
+                  >
+                    {emp.is_active ? '비활성' : '활성화'}
+                  </button>
+                  <button onClick={() => handlePermanentDelete(emp.id)} className="p-1.5 text-gray-300 hover:text-red-500">
                     <Trash2 size={16} />
                   </button>
                 </div>

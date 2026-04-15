@@ -103,10 +103,10 @@ async def update_employee(employee_id: str, employee: EmployeeUpdate):
 
 @router.delete("/{employee_id}")
 async def delete_employee(employee_id: str):
-    """직원 삭제 (비활성화)"""
+    """직원 영구 삭제 (DB에서 완전 제거)"""
     db = get_supabase()
-    db.table("employees").update({"is_active": False}).eq("id", employee_id).execute()
-    return {"message": "비활성화되었습니다."}
+    db.table("employees").delete().eq("id", employee_id).execute()
+    return {"message": "삭제되었습니다."}
 
 
 # --- 계정 정보 ---
