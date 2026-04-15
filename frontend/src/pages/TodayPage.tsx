@@ -4,7 +4,7 @@ import Header from '../components/common/Header'
 import ReassignModal from '../components/schedule/ReassignModal'
 import { scheduleApi, assignmentApi, stationApi, employeeApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
-import { ChevronLeft, ChevronRight, MapPin, Navigation, CheckCircle2, Clock, Loader2, RefreshCw, LocateFixed } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MapPin, Navigation, CheckCircle2, Clock, Loader2, RefreshCw, LocateFixed, CalendarX2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Schedule } from '../types'
 
@@ -61,6 +61,7 @@ export default function TodayPage() {
   const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null)
   const [isOptimized, setIsOptimized] = useState(false)
   const [completingId, setCompletingId] = useState<string | null>(null)
+  const [postponingId, setPostponingId] = useState<string | null>(null)
   const [yearlyStats, setYearlyStats] = useState<{ total_assigned: number; total_completed: number } | null>(null)
 
   // 올해 누적 통계 (날짜 변경과 무관하게 1회 로드)
@@ -457,6 +458,23 @@ export default function TodayPage() {
     }
   }
 
+  const handlePostpone = async (e: React.MouseEvent, scheduleId: string) => {
+    e.stopPropagation()
+    if (postponingId) return
+    if (!confirm('이 일정을 내일로 미루시겠습니까?')) return
+    setPostponingId(scheduleId)
+    try {
+      await scheduleApi.postpone(scheduleId)
+      // 다음날로 이동했으므로 현재 날짜 목록에서 제거
+      setSchedules(prev => prev.filter(item => item.id !== scheduleId))
+      toast.success('내일로 미루었습니다')
+    } catch {
+      toast.error('미루기 실패')
+    } finally {
+      setPostponingId(null)
+    }
+  }
+
   const formatDate = (dateStr: string) => {
     const [y, m, d] = dateStr.split('-').map(Number)
     const date = new Date(y, m - 1, d)
@@ -649,6 +667,19 @@ export default function TodayPage() {
                     <Navigation size={14} />
                     네비
                   </button>
+                  {s.status !== 'completed' && s.status !== 'postponed' && (
+                    <button
+                      onClick={(e) => handlePostpone(e, s.id)}
+                      disabled={postponingId === s.id}
+                      className="px-3 py-2 bg-orange-50 text-orange-600 rounded-xl text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {postponingId === s.id
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : <CalendarX2 size={14} />
+                      }
+                      내일로
+                    </button>
+                  )}
                   {s.status === 'pending' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleComplete(s.id) }}

@@ -151,7 +151,8 @@ async def cancel_complete(schedule_id: str):
 
 @router.post("/{schedule_id}/postpone")
 async def postpone_schedule(schedule_id: str):
-    """오늘 일정을 내일로 미루기"""
+    """일정을 다음날로 미루기 - 기존 레코드의 날짜를 이동 (새 레코드 생성 없음)"""
+    from datetime import timedelta
     db = get_supabase()
     schedule = db.table("schedules").select("*").eq("id", schedule_id).execute()
     if not schedule.data:
@@ -161,42 +162,33 @@ async def postpone_schedule(schedule_id: str):
     if current["status"] == "completed":
         raise HTTPException(400, "이미 완료된 일정은 미룰 수 없습니다.")
 
-    tomorrow = date.today().isoformat()
-    from datetime import timedelta
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    # 현재 scheduled_date 기준 다음날 계산 (오늘이 아닌 선택된 날짜 기준)
+    current_date = date.fromisoformat(current["scheduled_date"])
+    next_date = (current_date + timedelta(days=1)).isoformat()
 
-    db.table("schedules").update({
-        "status": "postponed",
-        "postponed_to": tomorrow,
-    }).eq("id", schedule_id).execute()
-
-    # 내일 기존 일정의 마지막 sort_order 조회
+    # 다음날 마지막 sort_order 조회 (자기 자신 제외)
     existing = (
         db.table("schedules")
         .select("sort_order")
         .eq("employee_id", current["employee_id"])
-        .eq("scheduled_date", tomorrow)
+        .eq("scheduled_date", next_date)
+        .neq("id", schedule_id)
         .order("sort_order", desc=True)
         .limit(1)
         .execute()
     )
     next_order = (existing.data[0]["sort_order"] + 1) if existing.data else 0
 
-    # 내일 날짜로 새 일정 생성
-    new_schedule = {
-        "station_id": current["station_id"],
-        "employee_id": current["employee_id"],
-        "scheduled_date": tomorrow,
+    # 기존 레코드를 다음날로 이동 — 새 레코드 생성 없이 날짜/상태만 변경
+    db.table("schedules").update({
+        "scheduled_date": next_date,
+        "status": "pending",
         "sort_order": next_order,
-    }
-    new_result = db.table("schedules").insert(new_schedule).execute()
+        "started_at": None,
+        "postponed_to": next_date,  # 미루어진 날짜 기록용
+    }).eq("id", schedule_id).execute()
 
-    # 새 일정에 체크리스트 생성
-    db.table("checklists").insert({
-        "schedule_id": new_result.data[0]["id"],
-    }).execute()
-
-    return {"message": "내일로 미루었습니다.", "new_schedule": new_result.data[0]}
+    return {"message": "내일로 미루었습니다.", "next_date": next_date}
 
 
 @router.post("/optimize-route")
