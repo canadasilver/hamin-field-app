@@ -11,6 +11,7 @@ import StationListPage from './pages/StationListPage'
 import DashboardPage from './pages/DashboardPage'
 import ScheduleDetailPage from './pages/ScheduleDetailPage'
 import TodayPage from './pages/TodayPage'
+import EmployeeMapPage from './pages/EmployeeMapPage'
 import AssignmentPage from './pages/AssignmentPage'
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
@@ -54,6 +55,7 @@ function AppRoutes() {
 
         {/* 직원 전용 */}
         <Route path="/today" element={<ProtectedRoute allowedRoles={['employee']}><TodayPage /></ProtectedRoute>} />
+        <Route path="/employee-map" element={<ProtectedRoute allowedRoles={['employee']}><EmployeeMapPage /></ProtectedRoute>} />
 
         {/* 공통 */}
         <Route path="/schedule/:id" element={<ProtectedRoute><ScheduleDetailPage /></ProtectedRoute>} />

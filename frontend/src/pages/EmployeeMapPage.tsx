@@ -1,21 +1,14 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '../components/common/Header'
-import ReassignModal from '../components/schedule/ReassignModal'
 import { scheduleApi, assignmentApi, stationApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
-import { ChevronLeft, ChevronRight, MapPin, Navigation, CheckCircle2, Clock, Loader2, RefreshCw, LocateFixed } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MapPin, Navigation, CheckCircle2, Clock, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Schedule } from '../types'
 
 declare global {
   interface Window { kakao: any }
-}
-
-const adjustDate = (dateStr: string, days: number) => {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const date = new Date(y, m - 1, d + days)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -45,9 +38,15 @@ function isFallbackCoord(lat: number, lng: number): boolean {
   return FALLBACK_COORDS.has(`${lat},${lng}`)
 }
 
-export default function TodayPage() {
+const adjustDate = (dateStr: string, days: number) => {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d + days)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+export default function EmployeeMapPage() {
   const navigate = useNavigate()
-  const { user, isAdmin } = useAuth()
+  const { user } = useAuth()
   const [selectedDate, setSelectedDate] = useState(() => {
     const n = new Date()
     return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
@@ -56,46 +55,35 @@ export default function TodayPage() {
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
   const [kakaoReady, setKakaoReady] = useState(false)
-  const [reassignTarget, setReassignTarget] = useState<Schedule | null>(null)
-  const [gpsLoading, setGpsLoading] = useState(false)
-  const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null)
-  const [isOptimized, setIsOptimized] = useState(false)
-  const [completingId, setCompletingId] = useState<string | null>(null)
 
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const overlaysRef = useRef<any[]>([])
   const polylineRef = useRef<any>(null)
   const infoWindowRef = useRef<any>(null)
-  const currentLocOverlayRef = useRef<any>(null)
 
-  // 1단계: 카카오맵 SDK 로드
+  const formatDate = (dateStr: string) => {
+    const [, m, d] = dateStr.split('-').map(Number)
+    const date = new Date(Number(dateStr.split('-')[0]), m - 1, d)
+    const days = ['일', '월', '화', '수', '목', '금', '토']
+    return `${m}월 ${d}일 (${days[date.getDay()]})`
+  }
+
+  // 카카오맵 SDK 로드
   useEffect(() => {
     const loadKakao = () => {
-      if (window.kakao?.maps?.LatLng) {
-        // 이미 완전히 로드됨
-        setKakaoReady(true)
-        return
-      }
-      if (window.kakao?.maps?.load) {
-        // autoload=false: load() 호출 필요
-        window.kakao.maps.load(() => setKakaoReady(true))
-        return
-      }
-      // SDK 스크립트 자체가 아직 없으면 동적 로드
+      if (window.kakao?.maps?.LatLng) { setKakaoReady(true); return }
+      if (window.kakao?.maps?.load) { window.kakao.maps.load(() => setKakaoReady(true)); return }
       const script = document.createElement('script')
       script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=92b199181912975f5c10cc85d977abdf&libraries=services&autoload=false'
-      script.onload = () => {
-        window.kakao.maps.load(() => setKakaoReady(true))
-      }
+      script.onload = () => window.kakao.maps.load(() => setKakaoReady(true))
       document.head.appendChild(script)
     }
     loadKakao()
-    // 백엔드에서 좌표 없는 기지국 일괄 지오코딩 (백그라운드)
     stationApi.geocodeMissing().catch(() => {})
   }, [])
 
-  // 2단계: 카카오 준비되면 지도 생성
+  // 지도 초기화
   useEffect(() => {
     if (!kakaoReady || !mapContainerRef.current || mapInstanceRef.current) return
     const kakao = window.kakao
@@ -105,7 +93,7 @@ export default function TodayPage() {
     })
   }, [kakaoReady])
 
-  // 카카오 REST API 지오코딩
+  // REST API 지오코딩
   const geocodeWithREST = async (query: string): Promise<{ lat: number; lng: number } | null> => {
     try {
       const res = await fetch(
@@ -116,7 +104,6 @@ export default function TodayPage() {
       if (data.documents?.length > 0) {
         return { lat: parseFloat(data.documents[0].y), lng: parseFloat(data.documents[0].x) }
       }
-      // 주소 검색 실패 시 키워드 검색
       const res2 = await fetch(
         `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`,
         { headers: { Authorization: 'KakaoAK 3392c59f3960f9cc452baef07e5f222b' } }
@@ -129,7 +116,7 @@ export default function TodayPage() {
     return null
   }
 
-  // 지오코딩 (좌표 없는 기지국)
+  // 지오코딩
   const geocodeStations = async (data: Schedule[]): Promise<Schedule[]> => {
     const needFix = data.filter(s => {
       const st = s.stations
@@ -152,37 +139,22 @@ export default function TodayPage() {
       if (!address && !name) continue
 
       let coords: { lat: number; lng: number } | null = null
-
-      // 1. 주소가 있으면 JS SDK 지오코더 시도
       if (address && geocoder) {
         coords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
           geocoder.addressSearch(address, (result: any[], status: string) => {
             if (status === window.kakao.maps.services.Status.OK && result.length > 0) {
               resolve({ lat: parseFloat(result[0].y), lng: parseFloat(result[0].x) })
-            } else {
-              resolve(null)
-            }
+            } else resolve(null)
           })
         })
       }
-
-      // 2. JS SDK 실패 시 REST API 주소 검색
-      if (!coords && address) {
-        coords = await geocodeWithREST(address)
-      }
-
-      // 3. 주소 검색 전부 실패 시 station_name으로 키워드 검색
-      if (!coords && name) {
-        coords = await geocodeWithREST(name)
-      }
+      if (!coords && address) coords = await geocodeWithREST(address)
+      if (!coords && name) coords = await geocodeWithREST(name)
 
       if (coords) {
         const idx = updated.findIndex(u => u.id === s.id)
         if (idx >= 0 && updated[idx].stations) {
-          updated[idx] = {
-            ...updated[idx],
-            stations: { ...updated[idx].stations!, lat: coords.lat, lng: coords.lng },
-          }
+          updated[idx] = { ...updated[idx], stations: { ...updated[idx].stations!, lat: coords.lat, lng: coords.lng } }
         }
         updates.push({ station_id: s.station_id, lat: coords.lat, lng: coords.lng })
       }
@@ -197,11 +169,10 @@ export default function TodayPage() {
     return updated
   }
 
-  // 3단계: 데이터 로드
+  // 데이터 로드
   const loadSchedules = useCallback(async () => {
     if (!user?.employee_id) { setLoading(false); return }
     setLoading(true)
-    setIsOptimized(false)
     try {
       const res = await scheduleApi.list({
         employee_id: user.employee_id,
@@ -217,82 +188,19 @@ export default function TodayPage() {
     }
   }, [user?.employee_id, selectedDate])
 
-  useEffect(() => {
-    loadSchedules()
-  }, [loadSchedules])
+  useEffect(() => { loadSchedules() }, [loadSchedules])
 
-  // 현재 위치 기반 동선 최적화
-  const handleOptimizeByGPS = useCallback(() => {
-    if (!navigator.geolocation) {
-      toast.error('이 브라우저는 위치 서비스를 지원하지 않습니다')
-      return
-    }
-    setGpsLoading(true)
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude
-        const lng = position.coords.longitude
-        setCurrentLoc({ lat, lng })
-        try {
-          // 직선거리 계산 (Haversine)
-          const calcDist = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-            const R = 6371
-            const dLat = (lat2 - lat1) * Math.PI / 180
-            const dLng = (lng2 - lng1) * Math.PI / 180
-            const a = Math.sin(dLat / 2) ** 2
-              + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-          }
-
-          // 좌표 있는 것은 거리순 정렬, 없는 것은 뒤로
-          const withCoords = schedules.filter(s => s.stations?.lat && s.stations?.lng)
-          const withoutCoords = schedules.filter(s => !s.stations?.lat || !s.stations?.lng)
-          const sorted = [...withCoords].sort((a, b) =>
-            calcDist(lat, lng, a.stations!.lat!, a.stations!.lng!) -
-            calcDist(lat, lng, b.stations!.lat!, b.stations!.lng!)
-          )
-          const newOrder = [...sorted, ...withoutCoords]
-
-          // DB sort_order 업데이트 (병렬)
-          await Promise.all(
-            newOrder.map((s, i) => scheduleApi.update(s.id, { sort_order: i }))
-          )
-
-          // 로컬 상태 직접 갱신 — 재조회 없이 확정된 순서 유지
-          setSchedules(newOrder)
-          setIsOptimized(true)
-          toast.success('현재 위치 기준으로 동선을 재계산했습니다')
-        } catch {
-          toast.error('동선 최적화 실패')
-        } finally {
-          setGpsLoading(false)
-        }
-      },
-      (error) => {
-        setGpsLoading(false)
-        if (error.code === error.PERMISSION_DENIED) {
-          toast.error('위치 권한을 허용해주세요')
-        } else {
-          toast.error('위치를 가져올 수 없습니다')
-        }
-      },
-      { timeout: 10000, maximumAge: 60000 }
-    )
-  }, [schedules])
-
-  // 4단계: 데이터 + 지도 준비되면 마커 그리기
+  // 마커 그리기
   useEffect(() => {
     if (!kakaoReady || !mapInstanceRef.current || schedules.length === 0) return
 
     const kakao = window.kakao
     const map = mapInstanceRef.current
 
-    // 기존 오버레이 정리
     overlaysRef.current.forEach(o => o.setMap(null))
     overlaysRef.current = []
     if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null }
     if (infoWindowRef.current) { infoWindowRef.current.close(); infoWindowRef.current = null }
-    if (currentLocOverlayRef.current) { currentLocOverlayRef.current.setMap(null); currentLocOverlayRef.current = null }
 
     const bounds = new kakao.maps.LatLngBounds()
     const linePath: any[] = []
@@ -301,10 +209,9 @@ export default function TodayPage() {
     schedules.forEach((s, idx) => {
       const lat = s.stations?.lat
       const lng = s.stations?.lng
-      const orderNum = idx + 1  // 전체 순서 번호 (좌표 없어도 번호 유지)
+      const orderNum = idx + 1
 
-      if (!lat || !lng) return  // 좌표 없으면 마커 제외
-
+      if (!lat || !lng) return
       hasValid = true
       const position = new kakao.maps.LatLng(lat, lng)
       bounds.extend(position)
@@ -342,46 +249,13 @@ export default function TodayPage() {
         infoWindowRef.current = info
       }
 
-      const overlay = new kakao.maps.CustomOverlay({
-        position,
-        content: el,
-        yAnchor: 1,
-      })
+      const overlay = new kakao.maps.CustomOverlay({ position, content: el, yAnchor: 1 })
       overlay.setMap(map)
       overlaysRef.current.push(overlay)
     })
 
-    // 현재 위치 마커 (파란 점)
-    if (currentLoc) {
-      const curPos = new kakao.maps.LatLng(currentLoc.lat, currentLoc.lng)
-      bounds.extend(curPos)
-      const curEl = document.createElement('div')
-      curEl.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-          <div style="
-            width:16px; height:16px; border-radius:50%;
-            background:#2563EB; border:3px solid white;
-            box-shadow:0 0 0 3px rgba(37,99,235,0.3);
-          "></div>
-          <span style="
-            font-size:10px; font-weight:bold; color:#2563EB;
-            background:white; padding:1px 5px; border-radius:8px;
-            box-shadow:0 1px 4px rgba(0,0,0,0.2); white-space:nowrap;
-          ">현재 위치</span>
-        </div>
-      `
-      const curOverlay = new kakao.maps.CustomOverlay({
-        position: curPos,
-        content: curEl,
-        yAnchor: 1,
-      })
-      curOverlay.setMap(map)
-      currentLocOverlayRef.current = curOverlay
-    }
-
     if (!hasValid) return
 
-    // 동선 연결
     if (linePath.length > 1) {
       const polyline = new kakao.maps.Polyline({
         path: linePath,
@@ -394,36 +268,19 @@ export default function TodayPage() {
       polylineRef.current = polyline
     }
 
-    // 자동 줌
-    if (linePath.length > 1) {
-      map.setBounds(bounds)
-    } else if (linePath.length === 1) {
-      map.setCenter(linePath[0])
-      map.setLevel(5)
-    }
+    if (linePath.length > 1) map.setBounds(bounds)
+    else if (linePath.length === 1) { map.setCenter(linePath[0]); map.setLevel(5) }
 
-    // 지도 클릭 시 인포윈도우 닫기
     kakao.maps.event.addListener(map, 'click', () => {
       if (infoWindowRef.current) { infoWindowRef.current.close(); infoWindowRef.current = null }
     })
-  }, [kakaoReady, schedules, currentLoc])
+  }, [kakaoReady, schedules])
 
-  const openNavi = (s: Schedule, isFirst = false) => {
+  const openNavi = (s: Schedule) => {
     const st = s.stations
     if (!st) return toast.error('기지국 정보 없음')
     if (st.lat && st.lng && !isFallbackCoord(st.lat, st.lng)) {
-      // 첫 번째 기지국이고 현재 위치가 있으면 출발지 포함 경로
-      if (isFirst && currentLoc) {
-        window.open(
-          `https://map.kakao.com/link/from/현재위치,${currentLoc.lat},${currentLoc.lng}/to/${encodeURIComponent(st.station_name)},${st.lat},${st.lng}`,
-          '_blank'
-        )
-      } else {
-        window.open(
-          `https://map.kakao.com/link/to/${encodeURIComponent(st.station_name)},${st.lat},${st.lng}`,
-          '_blank'
-        )
-      }
+      window.open(`https://map.kakao.com/link/to/${encodeURIComponent(st.station_name)},${st.lat},${st.lng}`, '_blank')
     } else if (st.address) {
       window.open(`https://map.kakao.com/link/search/${encodeURIComponent(st.address)}`, '_blank')
     } else {
@@ -431,39 +288,15 @@ export default function TodayPage() {
     }
   }
 
-  const handleComplete = async (scheduleId: string) => {
-    if (completingId) return
-    setCompletingId(scheduleId)
-    try {
-      await scheduleApi.update(scheduleId, { status: 'completed' })
-      setSchedules(prev =>
-        prev.map(item => item.id === scheduleId ? { ...item, status: 'completed' } : item)
-      )
-      toast.success('작업 완료 처리되었습니다')
-    } catch {
-      toast.error('처리 실패')
-    } finally {
-      setCompletingId(null)
-    }
-  }
-
-  const formatDate = (dateStr: string) => {
-    const [y, m, d] = dateStr.split('-').map(Number)
-    const date = new Date(y, m - 1, d)
-    const days = ['일', '월', '화', '수', '목', '금', '토']
-    return `${m}월 ${d}일 (${days[date.getDay()]})`
-  }
-
   const completedCount = schedules.filter(s => s.status === 'completed').length
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      <Header title={`${user?.name}님의 동선`} />
+      <Header title="지도" />
 
-      {/* 날짜 네비게이션 + 동선최적화 + 요약 */}
+      {/* 날짜 네비게이션 */}
       <div className="bg-white border-b border-gray-100 px-4 py-3">
-        <div className="max-w-lg mx-auto space-y-3">
-          {/* 날짜 이동 */}
+        <div className="max-w-lg mx-auto space-y-2">
           <div className="flex items-center justify-center gap-4">
             <button
               onClick={() => setSelectedDate(prev => adjustDate(prev, -1))}
@@ -482,40 +315,11 @@ export default function TodayPage() {
             </button>
           </div>
 
-          {/* 동선 최적화 버튼 */}
-          <button
-            onClick={handleOptimizeByGPS}
-            disabled={gpsLoading || loading}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${
-              isOptimized
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-[#215288] hover:bg-[#1a4070] text-white'
-            }`}
-          >
-            {gpsLoading ? (
-              <><Loader2 size={16} className="animate-spin" />위치 확인 중...</>
-            ) : isOptimized ? (
-              <><LocateFixed size={16} />최적화 완료 · 다시 계산하기</>
-            ) : (
-              <><LocateFixed size={16} />현재 위치 기준 동선 최적화</>
-            )}
-          </button>
-
-          {/* 요약 */}
           {!loading && schedules.length > 0 && (
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-gray-50 rounded-xl p-2.5 text-center">
-                <p className="text-xl font-bold text-gray-900">{schedules.length}</p>
-                <p className="text-[11px] text-gray-500">전체</p>
-              </div>
-              <div className="bg-green-50 rounded-xl p-2.5 text-center">
-                <p className="text-xl font-bold text-green-600">{completedCount}</p>
-                <p className="text-[11px] text-gray-500">완료</p>
-              </div>
-              <div className="bg-orange-50 rounded-xl p-2.5 text-center">
-                <p className="text-xl font-bold text-orange-600">{schedules.length - completedCount}</p>
-                <p className="text-[11px] text-gray-500">남은 작업</p>
-              </div>
+            <div className="flex justify-center gap-4 text-xs text-gray-500 pt-1">
+              <span>전체 <strong className="text-gray-900">{schedules.length}</strong></span>
+              <span>완료 <strong className="text-green-600">{completedCount}</strong></span>
+              <span>남은 <strong className="text-orange-600">{schedules.length - completedCount}</strong></span>
             </div>
           )}
         </div>
@@ -533,9 +337,8 @@ export default function TodayPage() {
 
       {/* 지도 */}
       <div
-        id="today-map"
         ref={mapContainerRef}
-        style={{ width: '100%', height: '350px', background: '#e8e8e8' }}
+        style={{ width: '100%', height: '380px', background: '#e8e8e8' }}
       />
 
       {/* 범례 */}
@@ -565,8 +368,7 @@ export default function TodayPage() {
           </div>
         ) : !user?.employee_id ? (
           <div className="text-center py-12 text-gray-400">
-            <p className="text-lg mb-1">직원 정보가 연결되지 않았습니다</p>
-            <p className="text-sm">관리자에게 문의하세요</p>
+            <p className="text-sm">직원 정보가 연결되지 않았습니다</p>
           </div>
         ) : schedules.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
@@ -597,15 +399,6 @@ export default function TodayPage() {
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white flex-shrink-0" style={{ background: color }}>
                       {statusLabel}
                     </span>
-                    {isAdmin && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setReassignTarget(s) }}
-                        className="flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium hover:bg-gray-200 flex-shrink-0"
-                      >
-                        <RefreshCw size={10} />
-                        재배정
-                      </button>
-                    )}
                   </div>
                   <p className="text-xs text-gray-400 truncate flex items-center gap-1 mt-0.5">
                     <MapPin size={10} />{s.stations?.address || '주소 없음'}
@@ -616,47 +409,18 @@ export default function TodayPage() {
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col gap-1 flex-shrink-0">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openNavi(s, i === 0) }}
-                    className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold flex items-center gap-1"
-                  >
-                    <Navigation size={14} />
-                    네비
-                  </button>
-                  {s.status === 'pending' && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleComplete(s.id) }}
-                      disabled={completingId === s.id}
-                      className="px-3 py-2 bg-[#215288] text-white rounded-xl text-xs font-bold flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {completingId === s.id
-                        ? <Loader2 size={14} className="animate-spin" />
-                        : <CheckCircle2 size={14} />
-                      }
-                      완료
-                    </button>
-                  )}
-                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); openNavi(s) }}
+                  className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold flex items-center gap-1 flex-shrink-0"
+                >
+                  <Navigation size={14} />
+                  네비
+                </button>
               </div>
             )
           })
         )}
       </div>
-
-      {reassignTarget && (
-        <ReassignModal
-          scheduleId={reassignTarget.id}
-          currentEmployeeId={reassignTarget.employee_id}
-          currentDate={reassignTarget.scheduled_date ?? selectedDate}
-          stationName={reassignTarget.stations?.station_name || '기지국'}
-          onClose={() => setReassignTarget(null)}
-          onDone={() => {
-            setReassignTarget(null)
-            loadSchedules()
-          }}
-        />
-      )}
     </div>
   )
 }

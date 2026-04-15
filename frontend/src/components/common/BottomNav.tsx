@@ -12,7 +12,8 @@ const adminNavItems = [
 ]
 
 const employeeNavItems = [
-  { path: '/today', icon: CalendarCheck, label: '오늘 일정' },
+  { path: '/today', icon: CalendarCheck, label: '홈' },
+  { path: '/employee-map', icon: MapPin, label: '지도' },
 ]
 
 export default function BottomNav() {
@@ -49,15 +50,13 @@ export default function BottomNav() {
             </button>
           )
         })}
-        {user.role === 'admin' && (
-          <button
-            onClick={handleLogout}
-            className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
-          >
-            <LogOut size={22} strokeWidth={2} />
-            <span className="text-xs font-medium">로그아웃</span>
-          </button>
-        )}
+        <button
+          onClick={handleLogout}
+          className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+        >
+          <LogOut size={22} strokeWidth={2} />
+          <span className="text-xs font-medium">로그아웃</span>
+        </button>
       </div>
     </nav>
   )
