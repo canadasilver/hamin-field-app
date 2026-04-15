@@ -4,7 +4,7 @@ import Header from '../components/common/Header'
 import ChecklistForm from '../components/checklist/ChecklistForm'
 import StatusBadge from '../components/common/StatusBadge'
 import { scheduleApi } from '../services/api'
-import { MapPin, Phone, User, Wrench, Wind, Calendar, Package, Factory, History } from 'lucide-react'
+import { MapPin, Wrench, Wind, Calendar, Package, Factory, History } from 'lucide-react'
 import type { Schedule, CoolingInfo } from '../types'
 
 export default function ScheduleDetailPage() {
@@ -47,16 +47,6 @@ export default function ScheduleDetailPage() {
             <p className="flex items-center gap-2 text-sm text-gray-600">
               <MapPin size={16} className="text-gray-400" />
               {station?.address}
-            </p>
-            <p className="flex items-center gap-2 text-sm text-gray-600">
-              <User size={16} className="text-gray-400" />
-              {station?.manager}
-            </p>
-            <p className="flex items-center gap-2 text-sm text-gray-600">
-              <Phone size={16} className="text-gray-400" />
-              <a href={`tel:${station?.contact}`} className="text-blue-600 underline">
-                {station?.contact}
-              </a>
             </p>
             {station?.work_2025 && (
               <p className="flex items-start gap-2 text-sm text-gray-600">

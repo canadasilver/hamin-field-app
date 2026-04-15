@@ -194,8 +194,6 @@ export default function StationListPage() {
 
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
                   {s.operation_team && <span>{s.operation_team}</span>}
-                  {s.manager && <span>{s.manager}</span>}
-                  {s.contact && <span>{s.contact}</span>}
                 </div>
 
                 {s.work_2025 && (
@@ -250,8 +248,6 @@ function StationDetailModal({ station: s, onClose }: { station: Station; onClose
           {/* 담당 정보 */}
           <Section title="담당 정보">
             <InfoRow label="운용팀" value={s.operation_team} />
-            <InfoRow label="담당자" value={s.manager} />
-            <InfoRow label="연락처" value={s.contact} />
             <InfoRow label="점검자" value={s.inspector} />
           </Section>
 

@@ -584,28 +584,6 @@ export default function TodayPage() {
         style={{ width: '100%', height: '350px', background: '#e8e8e8' }}
       />
 
-      {/* 담당 관리자 연락처 */}
-      {managerInfo?.name && (
-        <div className="px-4 py-2 bg-white border-b border-gray-100">
-          <div className="max-w-lg mx-auto">
-            <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: '#D6E4F0' }}>
-              <span className="text-sm font-medium flex-1" style={{ color: '#215288' }}>
-                👤 담당 관리자: {managerInfo.name}
-              </span>
-              {managerInfo.phone && (
-                <a
-                  href={`tel:${managerInfo.phone}`}
-                  onClick={e => e.stopPropagation()}
-                  className="text-sm font-semibold underline flex-shrink-0"
-                  style={{ color: '#215288' }}
-                >
-                  📞 {managerInfo.phone}
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 범례 */}
       {schedules.length > 0 && (
