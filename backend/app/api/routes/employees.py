@@ -243,6 +243,95 @@ async def reset_employee_password(employee_id: str, req: ResetPasswordRequest):
     return {"message": "비밀번호가 변경되었습니다."}
 
 
+class UpdateCredentialsRequest(BaseModel):
+    username: str | None = None
+    new_password: str | None = None
+
+
+def _find_auth_user_id(db, employee_id: str) -> str | None:
+    """직원의 Supabase Auth user ID 조회"""
+    try:
+        result = db.table("users").select("id").eq("employee_id", employee_id).execute()
+        if result.data:
+            return result.data[0]["id"]
+    except Exception:
+        pass
+    try:
+        users_res = db.auth.admin.list_users()
+        for u in users_res:
+            meta = getattr(u, "user_metadata", None) or {}
+            if meta.get("employee_id") == employee_id:
+                return str(u.id)
+    except Exception:
+        pass
+    return None
+
+
+@router.post("/{employee_id}/update-credentials")
+async def update_employee_credentials(employee_id: str, req: UpdateCredentialsRequest):
+    """직원 아이디 및/또는 비밀번호 변경"""
+    if not req.username and not req.new_password:
+        raise HTTPException(400, "변경할 내용이 없습니다.")
+
+    if req.new_password and len(req.new_password) < 4:
+        raise HTTPException(400, "비밀번호는 4자리 이상이어야 합니다.")
+
+    db = get_supabase()
+
+    # 직원 존재 및 현재 username 확인
+    emp_res = db.table("employees").select("id, username").eq("id", employee_id).execute()
+    if not emp_res.data:
+        raise HTTPException(404, "직원을 찾을 수 없습니다.")
+    emp = emp_res.data[0]
+    current_username = emp.get("username")
+
+    if not current_username:
+        raise HTTPException(400, "연결된 계정이 없습니다. 먼저 계정을 생성하세요.")
+
+    new_username = req.username.strip() if req.username else None
+
+    # 아이디 중복 체크 (변경하는 경우)
+    if new_username and new_username != current_username:
+        existing = (
+            db.table("employees")
+            .select("id")
+            .eq("username", new_username)
+            .neq("id", employee_id)
+            .execute()
+        )
+        if existing.data:
+            raise HTTPException(400, "이미 사용 중인 아이디입니다.")
+
+    # Auth user ID 조회
+    auth_user_id = _find_auth_user_id(db, employee_id)
+    if not auth_user_id:
+        raise HTTPException(404, "연결된 로그인 계정이 없습니다.")
+
+    # Supabase Auth 업데이트 (이메일/비밀번호)
+    auth_update: dict = {}
+    if new_username and new_username != current_username:
+        auth_update["email"] = username_to_email(new_username)
+    if req.new_password:
+        auth_update["password"] = req.new_password
+
+    if auth_update:
+        try:
+            db.auth.admin.update_user_by_id(auth_user_id, auth_update)
+        except Exception as e:
+            raise HTTPException(500, f"계정 업데이트 실패: {str(e)}")
+
+    # employees 테이블 username 업데이트
+    if new_username and new_username != current_username:
+        db.table("employees").update({"username": new_username}).eq("id", employee_id).execute()
+        # users 프로필 테이블 email 업데이트
+        try:
+            db.table("users").update({"email": username_to_email(new_username)}).eq("id", auth_user_id).execute()
+        except Exception:
+            pass
+
+    return {"message": "계정 정보가 변경되었습니다."}
+
+
 # --- 근무불가 날짜 ---
 
 

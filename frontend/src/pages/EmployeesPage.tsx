@@ -132,7 +132,7 @@ export default function EmployeesPage() {
       max_daily_tasks: emp.max_daily_tasks,
       per_task_rate: emp.per_task_rate,
       new_password: '',
-      username: '',
+      username: emp.username || '',
       confirm_password: '',
     })
     setEditUsername(emp.username || null)
@@ -146,8 +146,10 @@ export default function EmployeesPage() {
         employeeApi.getAccount(emp.id).catch(() => ({ data: { username: null, has_account: false } })),
         employeeApi.getUnavailableDates(emp.id),
       ])
-      setEditUsername(accountRes.data.username || emp.username || null)
+      const fetchedUsername = accountRes.data.username || emp.username || ''
+      setEditUsername(fetchedUsername || null)
       setEditHasAccount(accountRes.data.has_account || false)
+      setEditForm(prev => ({ ...prev, username: fetchedUsername }))
       setEditUnavailDates(datesRes.data)
     } catch {
       // 에러 무시
@@ -163,16 +165,16 @@ export default function EmployeesPage() {
       return
     }
 
-    // 계정 없는 직원이 아이디를 입력한 경우 유효성 검사
-    if (!editHasAccount && editForm.username.trim()) {
-      if (!editForm.new_password) {
-        toast.error('비밀번호를 입력하세요')
-        return
-      }
-      if (editForm.new_password !== editForm.confirm_password) {
-        toast.error('비밀번호가 일치하지 않습니다')
-        return
-      }
+    // 비밀번호 일치 체크 (공통)
+    if (editForm.new_password && editForm.new_password !== editForm.confirm_password) {
+      toast.error('비밀번호가 일치하지 않습니다')
+      return
+    }
+
+    // 계정 없는 직원이 아이디를 입력한 경우 비밀번호 필수
+    if (!editHasAccount && editForm.username.trim() && !editForm.new_password) {
+      toast.error('비밀번호를 입력하세요')
+      return
     }
 
     setSaving(true)
@@ -199,13 +201,25 @@ export default function EmployeesPage() {
         }
       }
 
-      // 계정 있는 직원: 비밀번호 변경
-      if (editHasAccount && editForm.new_password) {
-        try {
-          await employeeApi.resetPassword(editTarget.id, editForm.new_password)
-          toast.success('비밀번호 변경 완료')
-        } catch (err: any) {
-          toast.error(err.response?.data?.detail || '비밀번호 변경 실패')
+      // 계정 있는 직원: 아이디 또는 비밀번호 변경
+      if (editHasAccount) {
+        const credUpdate: { username?: string; new_password?: string } = {}
+        const trimmedUsername = editForm.username.trim()
+        if (trimmedUsername && trimmedUsername !== (editUsername || '')) {
+          credUpdate.username = trimmedUsername
+        }
+        if (editForm.new_password) {
+          credUpdate.new_password = editForm.new_password
+        }
+        if (Object.keys(credUpdate).length > 0) {
+          try {
+            await employeeApi.updateCredentials(editTarget.id, credUpdate)
+            toast.success('계정 정보 변경 완료')
+          } catch (err: any) {
+            toast.error(err.response?.data?.detail || '계정 정보 변경 실패')
+            setSaving(false)
+            return
+          }
         }
       }
 
@@ -462,74 +476,51 @@ export default function EmployeesPage() {
                 {/* 아이디 */}
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-1 block">아이디</label>
-                  {editHasAccount ? (
-                    <input
-                      type="text"
-                      value={editUsername || ''}
-                      disabled
-                      className="w-full px-3 py-2.5 border border-gray-100 rounded-xl text-sm bg-gray-50 text-gray-400"
-                    />
-                  ) : (
-                    <>
-                      <input
-                        type="text"
-                        placeholder="아이디 입력"
-                        value={editForm.username}
-                        onChange={e => setEditForm({ ...editForm, username: e.target.value })}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
-                      />
-                      <p className="text-xs text-gray-400 mt-1 ml-1">로그인에 사용할 아이디</p>
-                    </>
-                  )}
+                  <input
+                    type="text"
+                    placeholder="아이디 입력"
+                    value={editForm.username}
+                    onChange={e => setEditForm({ ...editForm, username: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+                  />
+                  <p className="text-xs text-gray-400 mt-1 ml-1">로그인에 사용할 아이디</p>
                 </div>
 
                 {/* 비밀번호 */}
-                {editHasAccount ? (
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 mb-1 block">비밀번호 재설정</label>
-                    <input
-                      type="password"
-                      placeholder="새 비밀번호 입력"
-                      value={editForm.new_password}
-                      onChange={e => setEditForm({ ...editForm, new_password: e.target.value })}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
-                      autoComplete="new-password"
-                    />
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">
+                    {editHasAccount ? '비밀번호 재설정' : '비밀번호'}
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={editHasAccount ? '새 비밀번호 (비워두면 변경 안함)' : '비밀번호 입력'}
+                    value={editForm.new_password}
+                    onChange={e => setEditForm({ ...editForm, new_password: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">비밀번호 확인</label>
+                  <input
+                    type="password"
+                    placeholder="비밀번호 확인"
+                    value={editForm.confirm_password}
+                    onChange={e => setEditForm({ ...editForm, confirm_password: e.target.value })}
+                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30 ${
+                      editForm.confirm_password && editForm.new_password !== editForm.confirm_password
+                        ? 'border-red-400'
+                        : 'border-gray-200'
+                    }`}
+                    autoComplete="new-password"
+                  />
+                  {editForm.confirm_password && editForm.new_password !== editForm.confirm_password && (
+                    <p className="text-xs text-red-500 mt-1 ml-1">비밀번호가 일치하지 않습니다</p>
+                  )}
+                  {editHasAccount && !editForm.new_password && (
                     <p className="text-xs text-gray-400 mt-1">비워두면 변경하지 않습니다</p>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 mb-1 block">비밀번호</label>
-                      <input
-                        type="password"
-                        placeholder="비밀번호 입력"
-                        value={editForm.new_password}
-                        onChange={e => setEditForm({ ...editForm, new_password: e.target.value })}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 mb-1 block">비밀번호 확인</label>
-                      <input
-                        type="password"
-                        placeholder="비밀번호 확인"
-                        value={editForm.confirm_password}
-                        onChange={e => setEditForm({ ...editForm, confirm_password: e.target.value })}
-                        className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30 ${
-                          editForm.confirm_password && editForm.new_password !== editForm.confirm_password
-                            ? 'border-red-400'
-                            : 'border-gray-200'
-                        }`}
-                        autoComplete="new-password"
-                      />
-                      {editForm.confirm_password && editForm.new_password !== editForm.confirm_password && (
-                        <p className="text-xs text-red-500 mt-1 ml-1">비밀번호가 일치하지 않습니다</p>
-                      )}
-                    </div>
-                  </>
-                )}
+                  )}
+                </div>
 
                 {/* 작업 설정 */}
                 <div className="grid grid-cols-2 gap-3">
@@ -617,7 +608,7 @@ export default function EmployeesPage() {
                   </button>
                   <button
                     onClick={handleEditSave}
-                    disabled={saving}
+                    disabled={saving || (!!editForm.new_password && editForm.new_password !== editForm.confirm_password)}
                     className="flex-1 flex items-center justify-center gap-2 py-3 bg-kt-red text-white rounded-xl font-bold disabled:opacity-50"
                   >
                     {saving ? <Loader2 size={16} className="animate-spin" /> : null}

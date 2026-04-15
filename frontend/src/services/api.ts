@@ -84,6 +84,8 @@ export const employeeApi = {
     api.post(`/employees/${id}/create-account`, data),
   resetPassword: (id: string, newPassword: string) =>
     api.post(`/employees/${id}/reset-password`, { new_password: newPassword }),
+  updateCredentials: (id: string, data: { username?: string; new_password?: string }) =>
+    api.post(`/employees/${id}/update-credentials`, data),
 }
 
 // --- 일정 ---
