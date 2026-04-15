@@ -8,6 +8,9 @@ class EmployeeBase(BaseModel):
     contact: str
     max_daily_tasks: int = 5
     per_task_rate: int = 0
+    resident_number: str | None = None
+    vehicle_number: str | None = None
+    memo: str | None = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -21,6 +24,9 @@ class EmployeeUpdate(BaseModel):
     max_daily_tasks: int | None = None
     per_task_rate: int | None = None
     is_active: bool | None = None
+    resident_number: str | None = None
+    vehicle_number: str | None = None
+    memo: str | None = None
 
 
 class EmployeeResponse(EmployeeBase):

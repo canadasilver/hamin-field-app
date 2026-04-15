@@ -81,6 +81,9 @@ export interface Employee {
   username: string | null
   max_daily_tasks: number
   per_task_rate: number
+  resident_number: string | null
+  vehicle_number: string | null
+  memo: string | null
   is_active: boolean
   created_at: string
   updated_at: string

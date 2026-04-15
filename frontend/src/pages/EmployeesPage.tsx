@@ -13,6 +13,9 @@ interface CreateForm {
   confirmPassword: string
   max_daily_tasks: number
   per_task_rate: number
+  resident_number: string
+  vehicle_number: string
+  memo: string
 }
 
 interface EditForm {
@@ -23,6 +26,9 @@ interface EditForm {
   new_password: string
   username: string
   confirm_password: string
+  resident_number: string
+  vehicle_number: string
+  memo: string
 }
 
 export default function EmployeesPage() {
@@ -31,6 +37,7 @@ export default function EmployeesPage() {
   const [form, setForm] = useState<CreateForm>({
     name: '', contact: '', username: '', password: '', confirmPassword: '',
     max_daily_tasks: 5, per_task_rate: 0,
+    resident_number: '', vehicle_number: '', memo: '',
   })
   const [creating, setCreating] = useState(false)
   const [selectedEmp, setSelectedEmp] = useState<string | null>(null)
@@ -38,7 +45,7 @@ export default function EmployeesPage() {
 
   // 수정 모달 상태
   const [editTarget, setEditTarget] = useState<Employee | null>(null)
-  const [editForm, setEditForm] = useState<EditForm>({ name: '', contact: '', max_daily_tasks: 5, per_task_rate: 0, new_password: '', username: '', confirm_password: '' })
+  const [editForm, setEditForm] = useState<EditForm>({ name: '', contact: '', max_daily_tasks: 5, per_task_rate: 0, new_password: '', username: '', confirm_password: '', resident_number: '', vehicle_number: '', memo: '' })
   const [editUsername, setEditUsername] = useState<string | null>(null)
   const [editHasAccount, setEditHasAccount] = useState(false)
   const [editUnavailDates, setEditUnavailDates] = useState<UnavailableDate[]>([])
@@ -82,12 +89,16 @@ export default function EmployeesPage() {
         password: form.password,
         max_daily_tasks: Number(form.max_daily_tasks) || 5,
         per_task_rate: Number(form.per_task_rate) || 0,
+        ...(form.resident_number.trim() && { resident_number: form.resident_number.trim() }),
+        ...(form.vehicle_number.trim() && { vehicle_number: form.vehicle_number.trim() }),
+        ...(form.memo.trim() && { memo: form.memo.trim() }),
       })
       toast.success('직원 등록 완료')
       setShowForm(false)
       setForm({
         name: '', contact: '', username: '', password: '', confirmPassword: '',
         max_daily_tasks: 5, per_task_rate: 0,
+        resident_number: '', vehicle_number: '', memo: '',
       })
       loadEmployees()
     } catch (err: any) {
@@ -134,6 +145,9 @@ export default function EmployeesPage() {
       new_password: '',
       username: emp.username || '',
       confirm_password: '',
+      resident_number: emp.resident_number || '',
+      vehicle_number: emp.vehicle_number || '',
+      memo: emp.memo || '',
     })
     setEditUsername(emp.username || null)
     setEditHasAccount(false)
@@ -184,6 +198,9 @@ export default function EmployeesPage() {
         contact: editForm.contact.trim(),
         max_daily_tasks: Number(editForm.max_daily_tasks) || 5,
         per_task_rate: Number(editForm.per_task_rate) || 0,
+        resident_number: editForm.resident_number.trim() || null,
+        vehicle_number: editForm.vehicle_number.trim() || null,
+        memo: editForm.memo.trim() || null,
       })
 
       // 계정 없는 직원: 계정 생성
@@ -354,6 +371,27 @@ export default function EmployeesPage() {
                 />
               </div>
             </div>
+            <input
+              type="text"
+              placeholder="주민번호 (000000-0000000)"
+              value={form.resident_number}
+              onChange={(e) => setForm({ ...form, resident_number: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+            />
+            <input
+              type="text"
+              placeholder="차량번호 (예: 12가 3456)"
+              value={form.vehicle_number}
+              onChange={(e) => setForm({ ...form, vehicle_number: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+            />
+            <textarea
+              placeholder="비고"
+              value={form.memo}
+              onChange={(e) => setForm({ ...form, memo: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30 resize-none"
+            />
             <button
               onClick={handleCreate}
               disabled={creating}
@@ -550,6 +588,38 @@ export default function EmployeesPage() {
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
                     />
                   </div>
+                </div>
+
+                {/* 추가 정보 */}
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">주민번호</label>
+                  <input
+                    type="text"
+                    placeholder="000000-0000000"
+                    value={editForm.resident_number}
+                    onChange={e => setEditForm({ ...editForm, resident_number: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">차량번호</label>
+                  <input
+                    type="text"
+                    placeholder="예: 12가 3456"
+                    value={editForm.vehicle_number}
+                    onChange={e => setEditForm({ ...editForm, vehicle_number: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">비고</label>
+                  <textarea
+                    placeholder="메모 입력"
+                    value={editForm.memo}
+                    onChange={e => setEditForm({ ...editForm, memo: e.target.value })}
+                    rows={2}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30 resize-none"
+                  />
                 </div>
 
                 {/* 근무불가 날짜 */}
