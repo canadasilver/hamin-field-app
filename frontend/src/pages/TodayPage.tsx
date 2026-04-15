@@ -63,13 +63,17 @@ export default function TodayPage() {
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [postponingId, setPostponingId] = useState<string | null>(null)
   const [yearlyStats, setYearlyStats] = useState<{ total_assigned: number; total_completed: number } | null>(null)
+  const [managerInfo, setManagerInfo] = useState<{ name: string | null; phone: string | null } | null>(null)
 
-  // 올해 누적 통계 (날짜 변경과 무관하게 1회 로드)
+  // 올해 누적 통계 + 담당 관리자 정보 (날짜 변경과 무관하게 1회 로드)
   useEffect(() => {
     if (!user?.employee_id) return
     const year = new Date().getFullYear()
     employeeApi.yearlyStats(user.employee_id, year)
       .then(res => setYearlyStats(res.data))
+      .catch(() => {})
+    employeeApi.getManager(user.employee_id)
+      .then(res => setManagerInfo(res.data))
       .catch(() => {})
   }, [user?.employee_id])
 
@@ -580,6 +584,29 @@ export default function TodayPage() {
         style={{ width: '100%', height: '350px', background: '#e8e8e8' }}
       />
 
+      {/* 담당 관리자 연락처 */}
+      {managerInfo?.name && (
+        <div className="px-4 py-2 bg-white border-b border-gray-100">
+          <div className="max-w-lg mx-auto">
+            <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: '#D6E4F0' }}>
+              <span className="text-sm font-medium flex-1" style={{ color: '#215288' }}>
+                👤 담당 관리자: {managerInfo.name}
+              </span>
+              {managerInfo.phone && (
+                <a
+                  href={`tel:${managerInfo.phone}`}
+                  onClick={e => e.stopPropagation()}
+                  className="text-sm font-semibold underline flex-shrink-0"
+                  style={{ color: '#215288' }}
+                >
+                  📞 {managerInfo.phone}
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 범례 */}
       {schedules.length > 0 && (
         <div className="bg-white border-b border-gray-100 px-4 py-2">
@@ -622,47 +649,59 @@ export default function TodayPage() {
               <div
                 key={s.id}
                 onClick={() => navigate(`/schedule/${s.id}`)}
-                className="flex items-center gap-3 bg-white rounded-xl p-3 border border-gray-100 active:bg-gray-50 cursor-pointer"
+                className="bg-white rounded-xl p-4 border border-gray-100 active:bg-gray-50 cursor-pointer shadow-sm"
               >
-                <span
-                  className="flex items-center justify-center w-8 h-8 rounded-full text-white text-sm font-bold flex-shrink-0"
-                  style={{ background: color }}
-                >
-                  {s.status === 'completed' ? <CheckCircle2 size={18} /> : i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
+                {/* 상단: 순서 원 + 기지국명 + 상태뱃지 */}
+                <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <p className={`font-medium text-sm truncate ${s.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                    <span
+                      className="flex items-center justify-center w-8 h-8 rounded-full text-white text-sm font-bold flex-shrink-0"
+                      style={{ background: color }}
+                    >
+                      {s.status === 'completed' ? <CheckCircle2 size={16} /> : i + 1}
+                    </span>
+                    <p className={`font-bold text-sm ${s.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                       {s.stations?.station_name || '기지국'}
                     </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     {s.status !== 'in_progress' && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white flex-shrink-0" style={{ background: color }}>
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white"
+                        style={{ background: color }}
+                      >
                         {statusLabel}
                       </span>
                     )}
                     {isAdmin && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setReassignTarget(s) }}
-                        className="flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium hover:bg-gray-200 flex-shrink-0"
+                        className="flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium hover:bg-gray-200"
                       >
                         <RefreshCw size={10} />
                         재배정
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400 truncate flex items-center gap-1 mt-0.5">
-                    <MapPin size={10} />{s.stations?.address || '주소 없음'}
+                </div>
+
+                {/* 중단: 주소 + 시작시간 */}
+                <div className="ml-10 space-y-0.5 mb-3">
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <MapPin size={11} />{s.stations?.address || '주소 없음'}
                   </p>
                   {s.started_at && (
-                    <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                      <Clock size={10} />시작: {new Date(s.started_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                    <p className="text-xs text-gray-400 flex items-center gap-1">
+                      <Clock size={11} />시작: {new Date(s.started_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col gap-1 flex-shrink-0">
+
+                {/* 하단: 버튼 가로 배치 */}
+                <div className="flex items-center gap-2 ml-10">
                   <button
                     onClick={(e) => { e.stopPropagation(); openNavi(s, i === 0) }}
-                    className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold flex items-center gap-1"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium"
                   >
                     <Navigation size={14} />
                     네비
@@ -671,7 +710,7 @@ export default function TodayPage() {
                     <button
                       onClick={(e) => handlePostpone(e, s.id)}
                       disabled={postponingId === s.id}
-                      className="px-3 py-2 bg-orange-50 text-orange-600 rounded-xl text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-xs font-medium disabled:opacity-50"
                     >
                       {postponingId === s.id
                         ? <Loader2 size={14} className="animate-spin" />
@@ -684,15 +723,17 @@ export default function TodayPage() {
                     <button
                       onClick={(e) => { e.stopPropagation(); handleComplete(s.id) }}
                       disabled={completingId === s.id}
-                      className="px-3 py-2 bg-[#215288] text-white rounded-xl text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-[#215288] text-white rounded-lg text-xs font-medium disabled:opacity-50"
                     >
                       {completingId === s.id
                         ? <Loader2 size={14} className="animate-spin" />
                         : <CheckCircle2 size={14} />
                       }
-                      완료
+                      작업완료
                     </button>
                   )}
+                  <div className="flex-1" />
+                  <ChevronRight size={18} className="text-gray-300" />
                 </div>
               </div>
             )

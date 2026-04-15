@@ -88,6 +88,8 @@ export const employeeApi = {
     api.post(`/employees/${id}/update-credentials`, data),
   yearlyStats: (id: string, year: number) =>
     api.get(`/employees/${id}/yearly-stats`, { params: { year } }),
+  getManager: (id: string) =>
+    api.get(`/employees/${id}/manager`),
 }
 
 // --- 일정 ---

@@ -333,6 +333,39 @@ async def update_employee_credentials(employee_id: str, req: UpdateCredentialsRe
     return {"message": "계정 정보가 변경되었습니다."}
 
 
+# --- 담당 관리자 정보 ---
+
+
+@router.get("/{employee_id}/manager")
+async def get_manager_info(employee_id: str):
+    """직원의 담당 관리자 이름 및 연락처 조회"""
+    db = get_supabase()
+
+    # users 테이블에서 admin 역할 조회
+    try:
+        result = db.table("users").select("name, employee_id").eq("role", "admin").limit(1).execute()
+        if not result.data:
+            return {"name": None, "phone": None}
+
+        admin = result.data[0]
+        phone = None
+
+        # admin에 연결된 employee 레코드가 있으면 contact 조회
+        if admin.get("employee_id"):
+            emp = (
+                db.table("employees")
+                .select("contact")
+                .eq("id", admin["employee_id"])
+                .execute()
+            )
+            if emp.data:
+                phone = emp.data[0].get("contact")
+
+        return {"name": admin.get("name"), "phone": phone}
+    except Exception:
+        return {"name": None, "phone": None}
+
+
 # --- 올해 누적 통계 ---
 
 
