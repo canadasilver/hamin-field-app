@@ -17,6 +17,9 @@ class StationResponse(BaseModel):
     operation_count: int | None = None
     cooling_info: list | None = None
     barcode: str | None = None
+    work_2021: str | None = None
+    work_2022: str | None = None
+    work_2023: str | None = None
     work_2024: str | None = None
     work_2025: str | None = None
     defect: str | None = None

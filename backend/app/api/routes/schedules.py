@@ -67,7 +67,17 @@ async def get_schedule(schedule_id: str):
     )
     if not result.data:
         raise HTTPException(404, "일정을 찾을 수 없습니다.")
-    return result.data
+
+    data = dict(result.data)
+    # stations(*) 조인은 Supabase 스키마 캐시 이슈로 나중에 추가된 컬럼
+    # (work_2021~work_2023 등)을 누락할 수 있음. 직접 조회로 보강.
+    station_id = data.get("station_id")
+    if station_id:
+        station_res = db.table("stations").select("*").eq("id", station_id).execute()
+        if station_res.data:
+            data["stations"] = station_res.data[0]
+
+    return data
 
 
 @router.patch("/{schedule_id}", response_model=ScheduleResponse)
