@@ -271,8 +271,18 @@ function StationDetailModal({ station: s, onClose }: { station: Station; onClose
 
           {/* 작업 이력 */}
           <Section title="작업 이력">
-            <InfoRow label="24년 점검/조치" value={s.work_2024} />
-            <InfoRow label="25년 점검/조치" value={s.work_2025} />
+            {[
+              { year: 2021, value: s.work_2021 },
+              { year: 2022, value: s.work_2022 },
+              { year: 2023, value: s.work_2023 },
+              { year: 2024, value: s.work_2024 },
+              { year: 2025, value: s.work_2025 },
+            ].filter(w => w.value).map(w => (
+              <div key={w.year} className="flex text-xs">
+                <span className="text-kt-red w-20 flex-shrink-0 font-medium">{w.year}년</span>
+                <span className="text-gray-700 flex-1">{w.value}</span>
+              </div>
+            ))}
             <InfoRow label="불량사항" value={s.defect} />
             <InfoRow label="예정공정" value={s.planned_process} />
           </Section>
