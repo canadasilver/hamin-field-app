@@ -120,7 +120,7 @@ export default function ScheduleDetailPage() {
 
         {/* 체크리스트 */}
         <div className="bg-white rounded-2xl p-4 border border-gray-100">
-          <ChecklistForm scheduleId={schedule.id} status={schedule.status} stationId={schedule.station_id} station={station} />
+          <ChecklistForm scheduleId={schedule.id} status={schedule.status} stationId={schedule.station_id} />
         </div>
       </div>
     </div>

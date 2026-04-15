@@ -37,6 +37,11 @@ def _get_current_user(authorization: str, db):
     }
 
 
+class YearWorkUpdate(BaseModel):
+    year: int
+    content: str | None = None
+
+
 class WorkHistoryCreate(BaseModel):
     station_id: str
     schedule_id: str | None = None
@@ -49,9 +54,64 @@ class WorkHistoryUpdate(BaseModel):
     date: str | None = None
 
 
+@router.get("/station/{station_id}")
+async def get_station_history(station_id: str):
+    """기지국 전체 작업 이력 통합 조회 (연도별 + work_history)"""
+    db = get_supabase()
+
+    # stations 테이블에서 연도별 컬럼 직접 조회 (스키마 캐시 우회)
+    station_res = (
+        db.table("stations")
+        .select("work_2021, work_2022, work_2023, work_2024")
+        .eq("id", station_id)
+        .execute()
+    )
+    station_data = station_res.data[0] if station_res.data else {}
+
+    # work_history 최신순 조회
+    history_res = (
+        db.table("work_history")
+        .select("*")
+        .eq("station_id", station_id)
+        .order("date", desc=True)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return {
+        "year_history": {
+            "2021": station_data.get("work_2021"),
+            "2022": station_data.get("work_2022"),
+            "2023": station_data.get("work_2023"),
+            "2024": station_data.get("work_2024"),
+        },
+        "work_history": history_res.data or [],
+    }
+
+
+@router.patch("/year/{station_id}")
+async def update_year_work(
+    station_id: str,
+    data: YearWorkUpdate,
+    authorization: str = Header(...),
+):
+    """연도별 작업 내용 수정 (관리자 전용)"""
+    db = get_supabase()
+    current_user = _get_current_user(authorization, db)
+    if current_user.get("role") != "admin":
+        raise HTTPException(403, "관리자만 수정할 수 있습니다.")
+    if data.year not in (2021, 2022, 2023, 2024):
+        raise HTTPException(400, "지원하지 않는 연도입니다.")
+    field = f"work_{data.year}"
+    result = db.table("stations").update({field: data.content}).eq("id", station_id).execute()
+    if not result.data:
+        raise HTTPException(404, "기지국을 찾을 수 없습니다.")
+    return result.data[0]
+
+
 @router.get("/")
 async def list_work_history(station_id: str):
-    """기지국 작업 이력 조회 (최신순)"""
+    """기지국 work_history만 조회 (최신순)"""
     db = get_supabase()
     result = (
         db.table("work_history")

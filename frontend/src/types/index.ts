@@ -147,6 +147,16 @@ export interface WorkHistory {
   created_at: string
 }
 
+export interface StationHistory {
+  year_history: {
+    '2021': string | null
+    '2022': string | null
+    '2023': string | null
+    '2024': string | null
+  }
+  work_history: WorkHistory[]
+}
+
 export interface DashboardSummary {
   month: string
   tasks: {

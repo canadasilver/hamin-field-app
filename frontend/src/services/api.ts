@@ -123,6 +123,8 @@ export const scheduleApi = {
 
 // --- 작업 이력 ---
 export const workHistoryApi = {
+  getStationHistory: (stationId: string) =>
+    api.get(`/work-history/station/${stationId}`),
   list: (stationId: string) =>
     api.get('/work-history/', { params: { station_id: stationId } }),
   create: (data: { station_id: string; schedule_id?: string; content: string; date?: string }) =>
@@ -130,6 +132,8 @@ export const workHistoryApi = {
   update: (id: string, data: { content: string; date?: string }) =>
     api.put(`/work-history/${id}`, data),
   delete: (id: string) => api.delete(`/work-history/${id}`),
+  updateYear: (stationId: string, data: { year: number; content: string | null }) =>
+    api.patch(`/work-history/year/${stationId}`, data),
 }
 
 // --- 냉방기 ---
