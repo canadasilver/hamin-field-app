@@ -1,0 +1,8 @@
+-- 연도별 점검 이력 컬럼 추가
+-- Supabase SQL Editor에서 실행하세요
+
+ALTER TABLE stations
+  ADD COLUMN IF NOT EXISTS work_2021 TEXT,
+  ADD COLUMN IF NOT EXISTS work_2022 TEXT,
+  ADD COLUMN IF NOT EXISTS work_2023 TEXT,
+  ADD COLUMN IF NOT EXISTS work_2024 TEXT;

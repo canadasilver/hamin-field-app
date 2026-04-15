@@ -49,6 +49,9 @@ export interface Station {
   operation_count: number | null
   cooling_info: CoolingInfo[] | null
   barcode: string | null
+  work_2021: string | null
+  work_2022: string | null
+  work_2023: string | null
   work_2024: string | null
   work_2025: string | null
   defect: string | null

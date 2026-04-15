@@ -4,7 +4,7 @@ import Header from '../components/common/Header'
 import ChecklistForm from '../components/checklist/ChecklistForm'
 import StatusBadge from '../components/common/StatusBadge'
 import { scheduleApi } from '../services/api'
-import { MapPin, Phone, User, Wrench, Wind, Calendar, Package, Factory } from 'lucide-react'
+import { MapPin, Phone, User, Wrench, Wind, Calendar, Package, Factory, History } from 'lucide-react'
 import type { Schedule, CoolingInfo } from '../types'
 
 export default function ScheduleDetailPage() {
@@ -127,6 +127,36 @@ export default function ScheduleDetailPage() {
             )}
           </div>
         </div>
+
+        {/* 점검 이력 */}
+        {(() => {
+          const history = [
+            { year: '2021년', value: station?.work_2021 },
+            { year: '2022년', value: station?.work_2022 },
+            { year: '2023년', value: station?.work_2023 },
+            { year: '2024년', value: station?.work_2024 },
+            { year: '2025년', value: station?.work_2025 },
+          ].filter(h => h.value)
+          if (history.length === 0) return null
+          return (
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 bg-[#215288]">
+                <History size={16} className="text-white" />
+                <h3 className="text-sm font-bold text-white">점검 이력</h3>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {history.map(h => (
+                  <div key={h.year} className="px-4 py-3 flex items-start gap-3">
+                    <span className="flex-shrink-0 text-xs font-bold text-[#215288] bg-[#215288]/10 px-2 py-0.5 rounded-full mt-0.5">
+                      {h.year}
+                    </span>
+                    <p className="text-sm text-gray-700 leading-relaxed">{h.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* 체크리스트 */}
         <div className="bg-white rounded-2xl p-4 border border-gray-100">

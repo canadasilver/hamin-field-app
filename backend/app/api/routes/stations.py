@@ -7,6 +7,7 @@ import pandas as pd
 import json
 import io
 import logging
+from datetime import date as _date
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,9 @@ def _parse_row(row, cols: set) -> dict | None:
         "국소ID": "station_id",
         "옥내/외구분": "indoor_outdoor",
         "바코드번호": "barcode",
+        "21년 점검/조치내역": "work_2021",
+        "22년 점검/조치내역": "work_2022",
+        "23년 점검/조치내역": "work_2023",
         "24년 점검/조치내역": "work_2024",
         "불량사항": "defect",
         "운용팀": "operation_team",
@@ -189,6 +193,15 @@ def _parse_row(row, cols: set) -> dict | None:
             val = _safe_str(row.get(excel_col))
             if val:
                 data[db_col] = val
+
+    # 점검일자 추가 별칭 ("25년 점검일자", "점검일")
+    if "inspection_date" not in data:
+        for alias in ("25년 점검일자", "점검일"):
+            if alias in cols:
+                val = _safe_str(row.get(alias))
+                if val:
+                    data["inspection_date"] = val
+                    break
 
     # 운용수량 (숫자)
     if "운용수량" in cols:
@@ -222,6 +235,14 @@ def _parse_row(row, cols: set) -> dict | None:
             cooling.append({"capacity": cap, "manufacturer": mfr, "acquired": acq})
     if cooling:
         data["cooling_info"] = json.dumps(cooling, ensure_ascii=False)
+
+    # 담당직원 이름 (stations 컬럼 아님 — upload_excel에서 스케줄 배분에 사용)
+    for alias in ("담당직원", "작업자", "담당기사"):
+        if alias in cols:
+            emp_name = _safe_str(row.get(alias))
+            if emp_name:
+                data["_employee_name"] = emp_name
+                break
 
     return data
 
@@ -280,6 +301,14 @@ async def upload_excel(file: UploadFile = File(...)):
     db = get_supabase()
     cols = set(df.columns)
 
+    # 직원 이름 → id 맵 (한 번만 조회)
+    emp_name_map: dict[str, str] = {}
+    try:
+        emp_rows = db.table("employees").select("id, name").eq("is_active", True).execute()
+        emp_name_map = {e["name"]: e["id"] for e in (emp_rows.data or [])}
+    except Exception as e:
+        logger.warning(f"직원 목록 조회 실패: {e}")
+
     # uploaded_files 레코드 생성
     file_id = None
     try:
@@ -304,6 +333,8 @@ async def upload_excel(file: UploadFile = File(...)):
     success = 0
     fail = 0
     errors = []
+    # (employee_id, scheduled_date) → 다음 sort_order 추적
+    sort_order_counter: dict[tuple, int] = {}
 
     for idx, row in df.iterrows():
         try:
@@ -311,11 +342,55 @@ async def upload_excel(file: UploadFile = File(...)):
             if not record:
                 continue
 
+            # 특수 키 추출 (stations 테이블에 저장하지 않음)
+            employee_name = record.pop("_employee_name", None)
+            inspection_date = record.get("inspection_date")
+
             if file_id:
                 record["file_id"] = file_id
 
-            db.table("stations").insert(record).execute()
+            # 점검일자 기준 station 상태 결정
+            if inspection_date:
+                record["status"] = "completed"
+            elif employee_name and employee_name in emp_name_map:
+                record["status"] = "assigned"
+            else:
+                record["status"] = "pending"
+
+            # station 저장
+            station_res = db.table("stations").insert(record).execute()
+            station_id = station_res.data[0]["id"]
             success += 1
+
+            # 담당직원 있으면 스케줄 자동 배분
+            if employee_name and employee_name in emp_name_map:
+                emp_id = emp_name_map[employee_name]
+                today = _date.today().isoformat()
+                key = (emp_id, today)
+                sort_order = sort_order_counter.get(key, 0)
+                sort_order_counter[key] = sort_order + 1
+
+                schedule_data: dict = {
+                    "station_id": station_id,
+                    "employee_id": emp_id,
+                    "scheduled_date": today,
+                    "sort_order": sort_order,
+                }
+                if inspection_date:
+                    schedule_data["status"] = "completed"
+                    schedule_data["completed_at"] = inspection_date
+                else:
+                    schedule_data["status"] = "pending"
+
+                try:
+                    sched_res = db.table("schedules").insert(schedule_data).execute()
+                    if sched_res.data:
+                        db.table("checklists").insert({
+                            "schedule_id": sched_res.data[0]["id"]
+                        }).execute()
+                except Exception as se:
+                    logger.warning(f"스케줄 자동 배분 실패 (station {station_id}): {se}")
+
         except Exception as e:
             fail += 1
             if len(errors) < 10:
