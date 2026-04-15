@@ -677,7 +677,8 @@ async def get_task_items(
     target_date: Optional[str] = Query(None, alias="date"),
     status: Optional[str] = Query(None),
 ):
-    """연간/월간/일별 작업 목록 조회 (상태 필터 지원)"""
+    """연간/월간/일별 작업 목록 조회 (상태 필터 지원)
+    annual stats와 동일하게 scheduled_date + completed_at 양쪽 기준으로 조회하여 집계 수치와 일치."""
     db = get_supabase()
 
     # 날짜 범위 결정
@@ -699,40 +700,59 @@ async def get_task_items(
         start_date = f"{today.year}-{today.month:02d}-01"
         end_date = f"{today.year}-{today.month + 1:02d}-01" if today.month < 12 else f"{today.year + 1}-01-01"
 
-    all_data: list[dict] = []
-    offset = 0
+    _sel = (
+        "id, station_id, employee_id, scheduled_date, status, completed_at,"
+        " stations(station_name, address), employees(name)"
+    )
     page_size = 1000
+    all_data_map: dict[str, dict] = {}
 
+    # 1) scheduled_date 기준 조회
+    offset = 0
     while True:
         if use_eq:
-            q = (
-                db.table("schedules")
-                .select(
-                    "id, station_id, employee_id, scheduled_date, status,"
-                    " stations(station_name, address), employees(name)"
-                )
-                .eq("scheduled_date", start_date)
-            )
+            q = db.table("schedules").select(_sel).eq("scheduled_date", start_date)
         else:
             q = (
-                db.table("schedules")
-                .select(
-                    "id, station_id, employee_id, scheduled_date, status,"
-                    " stations(station_name, address), employees(name)"
-                )
-                .gte("scheduled_date", start_date)
-                .lt("scheduled_date", end_date)
+                db.table("schedules").select(_sel)
+                .gte("scheduled_date", start_date).lt("scheduled_date", end_date)
             )
-
-        # 상태 필터는 dedup 후 적용해야 정확하므로 여기서는 전체 조회
-        res = q.order("scheduled_date").order("employee_id").range(offset, offset + page_size - 1).execute()
-        all_data.extend(res.data)
+        res = q.range(offset, offset + page_size - 1).execute()
+        for item in res.data:
+            all_data_map[item["id"]] = item
         if len(res.data) < page_size:
             break
         offset += page_size
 
-    # 고유 station_id 기준 중복 제거 후 상태 필터 적용
+    # 2) 완료 스케줄 중 completed_at(UTC)이 해당 기간인 것 병합
+    #    annual stats와 동일 기준 — scheduled_date가 다른 연도여도 포함
+    if not use_eq:
+        offset = 0
+        while True:
+            res = (
+                db.table("schedules").select(_sel)
+                .eq("status", "completed")
+                .gte("completed_at", start_date).lt("completed_at", end_date)
+                .range(offset, offset + page_size - 1).execute()
+            )
+            for item in res.data:
+                all_data_map[item["id"]] = item
+            if len(res.data) < page_size:
+                break
+            offset += page_size
+
+    all_data = list(all_data_map.values())
+
+    # 고유 station_id 기준 중복 제거
     station_best = _dedupe_stations(all_data)
+
+    # 연/월 뷰: _effective_date(완료 시 completed_at, 그 외 scheduled_date) 기준으로 범위 필터
+    # → annual/monthly stats 집계 기준과 동일하게 맞춤
+    if not use_eq:
+        station_best = {
+            sid: s for sid, s in station_best.items()
+            if start_date <= _effective_date(s) < end_date
+        }
 
     result = []
     for sid, s in station_best.items():
