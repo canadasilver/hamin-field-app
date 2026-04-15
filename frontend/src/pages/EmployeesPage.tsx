@@ -123,9 +123,13 @@ export default function EmployeesPage() {
 
   const handlePermanentDelete = async (id: string) => {
     if (!confirm('정말 삭제하시겠습니까? 복구할 수 없습니다.')) return
-    await employeeApi.delete(id)
-    toast.success('삭제되었습니다')
-    loadEmployees()
+    try {
+      await employeeApi.delete(id)
+      setEmployees(prev => prev.filter(e => e.id !== id))
+      toast.success('삭제되었습니다')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || '삭제에 실패했습니다')
+    }
   }
 
   const handleAddUnavailDate = async () => {

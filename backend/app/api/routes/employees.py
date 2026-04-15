@@ -103,9 +103,24 @@ async def update_employee(employee_id: str, employee: EmployeeUpdate):
 
 @router.delete("/{employee_id}")
 async def delete_employee(employee_id: str):
-    """직원 영구 삭제 (DB에서 완전 제거)"""
+    """직원 영구 삭제 (FK 참조 테이블 선정리 후 완전 삭제)"""
     db = get_supabase()
-    db.table("employees").delete().eq("id", employee_id).execute()
+    # FK 제약 해결: 관련 데이터 먼저 정리
+    for cleanup in [
+        lambda: db.table("employee_unavailable_dates").delete().eq("employee_id", employee_id).execute(),
+        lambda: db.table("schedules").delete().eq("employee_id", employee_id).execute(),
+        lambda: db.table("users").update({"employee_id": None}).eq("employee_id", employee_id).execute(),
+        lambda: db.table("work_history").update({"employee_id": None}).eq("employee_id", employee_id).execute(),
+    ]:
+        try:
+            cleanup()
+        except Exception as e:
+            logger.warning(f"직원 삭제 전처리 중 오류 (무시): {e}")
+    # 직원 본 레코드 삭제
+    try:
+        db.table("employees").delete().eq("id", employee_id).execute()
+    except Exception as e:
+        raise HTTPException(500, f"직원 삭제 실패: {str(e)}")
     return {"message": "삭제되었습니다."}
 
 
