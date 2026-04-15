@@ -166,12 +166,13 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
 
   if (loading) return <div className="p-4 text-center text-gray-400">로딩중...</div>
 
-  // work_2021~2024 연도별 이력 (값 있는 것만)
+  // work_2021~2025 연도별 이력 (값 있는 연도만)
   const yearHistory = [
     { year: '2021년', value: station?.work_2021 },
     { year: '2022년', value: station?.work_2022 },
     { year: '2023년', value: station?.work_2023 },
     { year: '2024년', value: station?.work_2024 },
+    { year: '2025년', value: station?.work_2025 },
   ].filter(h => h.value)
 
   const hasAnyHistory = yearHistory.length > 0 || workHistories.length > 0
@@ -180,9 +181,9 @@ export default function ChecklistForm({ scheduleId, status, stationId, station }
     <div className="space-y-4">
       {/* 작업 이력 */}
       <div>
-        <p className="text-sm font-bold text-[#215288] mb-2">작업 이력</p>
+        <p className="text-sm font-bold text-[#215288] mb-2">점검·작업 이력</p>
 
-        {/* 연도별 이력 (work_2021~2024) */}
+        {/* 연도별 이력 (work_2021~2025) */}
         {yearHistory.length > 0 && (
           <div className="bg-gray-50 rounded-xl px-3 py-2.5 mb-2 space-y-1.5">
             {yearHistory.map(h => (

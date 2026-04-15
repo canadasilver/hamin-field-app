@@ -54,13 +54,25 @@ async def create_schedule(schedule: ScheduleCreate):
     return result.data[0]
 
 
+_STATIONS_COLUMNS = (
+    "id, no, unique_no, network_group, location_code, equipment_type, "
+    "station_id, station_name, indoor_outdoor, operation_count, cooling_info, "
+    "barcode, work_2021, work_2022, work_2023, work_2024, work_2025, defect, "
+    "operation_team, manager, contact, address, building_name, planned_process, "
+    "inspector, inspection_target, inspection_result, inspection_date, "
+    "registration_status, registration_date, lat, lng, status, file_id, "
+    "created_at, updated_at"
+)
+
+
 @router.get("/{schedule_id}")
 async def get_schedule(schedule_id: str):
     """단일 일정 조회 (기지국 정보 포함)"""
     db = get_supabase()
+    # schedules만 먼저 조회 (stations(*) JOIN은 스키마 캐시 이슈로 work_2021~2025 누락 가능)
     result = (
         db.table("schedules")
-        .select("*, stations(*)")
+        .select("*")
         .eq("id", schedule_id)
         .single()
         .execute()
@@ -69,11 +81,16 @@ async def get_schedule(schedule_id: str):
         raise HTTPException(404, "일정을 찾을 수 없습니다.")
 
     data = dict(result.data)
-    # stations(*) 조인은 Supabase 스키마 캐시 이슈로 나중에 추가된 컬럼
-    # (work_2021~work_2023 등)을 누락할 수 있음. 직접 조회로 보강.
+
+    # stations 컬럼 명시 조회 — 스키마 캐시에 의존하지 않고 work_2021~2025 포함
     station_id = data.get("station_id")
     if station_id:
-        station_res = db.table("stations").select("*").eq("id", station_id).execute()
+        station_res = (
+            db.table("stations")
+            .select(_STATIONS_COLUMNS)
+            .eq("id", str(station_id))
+            .execute()
+        )
         if station_res.data:
             data["stations"] = station_res.data[0]
 
