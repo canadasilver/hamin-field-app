@@ -7,7 +7,7 @@ import pandas as pd
 import json
 import io
 import logging
-from datetime import date as _date
+from datetime import date as _date, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,35 @@ def _safe_str(val) -> str:
     return str(val).strip()
 
 
+def _excel_serial_to_date_str(val: str) -> str | None:
+    """엑셀 날짜 시리얼 숫자 문자열 → YYYY-MM-DD.
+    예) "45951" or "45951.0" → "2025-10-22"
+    공식: 1900-01-01 기준, serial 1 = 1900-01-01
+    """
+    try:
+        serial = float(val.strip())
+        if serial > 1000:  # 합리적인 날짜 범위 (1902년 이후)
+            return (_date(1900, 1, 1) + timedelta(days=int(serial) - 1)).isoformat()
+    except (ValueError, TypeError, OverflowError):
+        pass
+    return None
+
+
 def _extract_date_str(val: str) -> str | None:
     """점검일자 문자열에서 YYYY-MM-DD 형식 추출.
     예) "2025-10-15 00:00:00" → "2025-10-15", "2025-10" → "2025-10-01"
+    엑셀 시리얼 숫자 "45951" or "45951.0" → "2025-10-22"
     """
     if not val:
         return None
-    date_part = val.strip().split()[0].split("T")[0]
+    stripped = val.strip()
+    # 숫자형 시리얼 처리 (엑셀 날짜가 float으로 읽힌 경우)
+    try:
+        float(stripped)
+        return _excel_serial_to_date_str(stripped)
+    except ValueError:
+        pass
+    date_part = stripped.split()[0].split("T")[0]
     segs = date_part.split("-")
     try:
         if len(segs) >= 3:
@@ -220,6 +242,14 @@ def _parse_row(row, cols: set) -> dict | None:
                 if val:
                     data["inspection_date"] = val
                     break
+
+    # 날짜 컬럼 시리얼 숫자 → YYYY-MM-DD 변환
+    # 엑셀이 날짜를 숫자(45951.0 등)로 저장한 경우 실제 날짜 문자열로 변환
+    for date_col in ("inspection_date", "registration_date"):
+        if date_col in data:
+            converted = _extract_date_str(data[date_col])
+            if converted:
+                data[date_col] = converted
 
     # 운용수량 (숫자)
     if "운용수량" in cols:
