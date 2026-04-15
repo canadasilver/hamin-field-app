@@ -13,7 +13,6 @@ const adminNavItems = [
 
 const employeeNavItems = [
   { path: '/today', icon: CalendarCheck, label: '홈' },
-  { path: '/employee-map', icon: MapPin, label: '지도' },
 ]
 
 export default function BottomNav() {

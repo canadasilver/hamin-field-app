@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '../components/common/Header'
 import ReassignModal from '../components/schedule/ReassignModal'
-import { scheduleApi, assignmentApi, stationApi } from '../services/api'
+import { scheduleApi, assignmentApi, stationApi, employeeApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { ChevronLeft, ChevronRight, MapPin, Navigation, CheckCircle2, Clock, Loader2, RefreshCw, LocateFixed } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -20,7 +20,7 @@ const adjustDate = (dateStr: string, days: number) => {
 
 const STATUS_COLORS: Record<string, string> = {
   completed: '#22c55e',
-  in_progress: '#E53935',
+  in_progress: '#1976D2',
   pending: '#1976D2',
   postponed: '#f59e0b',
 }
@@ -61,6 +61,16 @@ export default function TodayPage() {
   const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null)
   const [isOptimized, setIsOptimized] = useState(false)
   const [completingId, setCompletingId] = useState<string | null>(null)
+  const [yearlyStats, setYearlyStats] = useState<{ total_assigned: number; total_completed: number } | null>(null)
+
+  // 올해 누적 통계 (날짜 변경과 무관하게 1회 로드)
+  useEffect(() => {
+    if (!user?.employee_id) return
+    const year = new Date().getFullYear()
+    employeeApi.yearlyStats(user.employee_id, year)
+      .then(res => setYearlyStats(res.data))
+      .catch(() => {})
+  }, [user?.employee_id])
 
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
@@ -501,9 +511,23 @@ export default function TodayPage() {
             )}
           </button>
 
-          {/* 요약 */}
+          {/* 올해 누적 통계 */}
+          {yearlyStats && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-blue-50 rounded-xl p-2.5 text-center">
+                <p className="text-xl font-bold" style={{ color: '#215288' }}>{yearlyStats.total_assigned}</p>
+                <p className="text-[11px] text-gray-500">올해 총배정</p>
+              </div>
+              <div className="bg-green-50 rounded-xl p-2.5 text-center">
+                <p className="text-xl font-bold text-green-600">{yearlyStats.total_completed}</p>
+                <p className="text-[11px] text-gray-500">올해 완료</p>
+              </div>
+            </div>
+          )}
+
+          {/* 선택 날짜 요약 */}
           {!loading && schedules.length > 0 && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <div className="bg-gray-50 rounded-xl p-2.5 text-center">
                 <p className="text-xl font-bold text-gray-900">{schedules.length}</p>
                 <p className="text-[11px] text-gray-500">전체</p>
@@ -544,7 +568,6 @@ export default function TodayPage() {
           <div className="max-w-lg mx-auto flex justify-center gap-4">
             {[
               { color: '#1976D2', label: '대기중' },
-              { color: '#E53935', label: '진행중' },
               { color: '#22c55e', label: '완료' },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-1.5">
@@ -594,9 +617,11 @@ export default function TodayPage() {
                     <p className={`font-medium text-sm truncate ${s.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                       {s.stations?.station_name || '기지국'}
                     </p>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white flex-shrink-0" style={{ background: color }}>
-                      {statusLabel}
-                    </span>
+                    {s.status !== 'in_progress' && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white flex-shrink-0" style={{ background: color }}>
+                        {statusLabel}
+                      </span>
+                    )}
                     {isAdmin && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setReassignTarget(s) }}

@@ -86,6 +86,8 @@ export const employeeApi = {
     api.post(`/employees/${id}/reset-password`, { new_password: newPassword }),
   updateCredentials: (id: string, data: { username?: string; new_password?: string }) =>
     api.post(`/employees/${id}/update-credentials`, data),
+  yearlyStats: (id: string, year: number) =>
+    api.get(`/employees/${id}/yearly-stats`, { params: { year } }),
 }
 
 // --- 일정 ---

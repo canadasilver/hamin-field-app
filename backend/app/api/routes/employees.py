@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from datetime import date
 from app.api.deps import get_supabase
 from app.schemas.employee import (
     EmployeeCreate,
@@ -330,6 +331,32 @@ async def update_employee_credentials(employee_id: str, req: UpdateCredentialsRe
             pass
 
     return {"message": "계정 정보가 변경되었습니다."}
+
+
+# --- 올해 누적 통계 ---
+
+
+@router.get("/{employee_id}/yearly-stats")
+async def get_employee_yearly_stats(employee_id: str, year: int | None = None):
+    """직원의 올해 누적 배정/완료 통계"""
+    if year is None:
+        year = date.today().year
+    db = get_supabase()
+    start_date = f"{year}-01-01"
+    end_date = f"{year}-12-31"
+    result = (
+        db.table("schedules")
+        .select("status")
+        .eq("employee_id", employee_id)
+        .gte("scheduled_date", start_date)
+        .lte("scheduled_date", end_date)
+        .execute()
+    )
+    schedules = result.data or []
+    return {
+        "total_assigned": len(schedules),
+        "total_completed": sum(1 for s in schedules if s.get("status") == "completed"),
+    }
 
 
 # --- 근무불가 날짜 ---
