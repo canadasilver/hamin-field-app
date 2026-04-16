@@ -4,6 +4,7 @@ import { ChevronLeft, Download, Filter, Loader2, Search, X } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 import Header from '../components/common/Header'
+import { useAuth } from '../contexts/AuthContext'
 import { stationApi } from '../services/api'
 import type { CoolingInfo, Station } from '../types'
 
@@ -29,6 +30,7 @@ function parseCoolingInfo(coolingInfo: Station['cooling_info']): CoolingInfo[] {
 export default function StationListPage() {
   const { fileId } = useParams<{ fileId: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [stations, setStations] = useState<Station[]>([])
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState('')
@@ -88,6 +90,8 @@ export default function StationListPage() {
     return `${stations.length}개 기지국`
   }, [loading, stations.length])
 
+  const isEmployeeView = user?.role === 'employee' && !fileId
+
   const handleExportExcel = () => {
     if (stations.length === 0) {
       toast.error('내보낼 기지국이 없습니다.')
@@ -117,7 +121,11 @@ export default function StationListPage() {
       <Header
         title="기지국 목록"
         left={(
-          <button onClick={() => navigate('/files')} className="p-2 text-gray-600" aria-label="뒤로가기">
+          <button
+            onClick={() => navigate(isEmployeeView ? '/today' : '/files')}
+            className="p-2 text-gray-600"
+            aria-label="뒤로가기"
+          >
             <ChevronLeft size={22} />
           </button>
         )}
@@ -127,6 +135,7 @@ export default function StationListPage() {
             className="p-2 text-kt-red"
             title="엑셀 다운로드"
             aria-label="엑셀 다운로드"
+            disabled={stations.length === 0}
           >
             <Download size={20} />
           </button>

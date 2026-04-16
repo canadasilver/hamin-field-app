@@ -55,6 +55,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><DashboardPage /></ProtectedRoute>} />
 
         <Route path="/today" element={<ProtectedRoute allowedRoles={['employee']}><TodayPage /></ProtectedRoute>} />
+        <Route path="/stations" element={<ProtectedRoute allowedRoles={['employee']}><StationListPage /></ProtectedRoute>} />
         <Route path="/schedule/:id" element={<ProtectedRoute><ScheduleDetailPage /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to={user ? (user.role === 'admin' ? '/' : '/today') : '/login'} replace />} />
