@@ -4,6 +4,7 @@ import { scheduleApi, employeeApi, assignmentApi } from '../services/api'
 import type { Schedule, Employee } from '../types'
 import { MapPin, Navigation, CheckCircle2, Clock, Loader2, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { loadKakaoMapSdk } from '../lib/kakao'
 
 declare global {
   interface Window { kakao: any }
@@ -70,14 +71,13 @@ export default function MapPage() {
   useEffect(() => {
     employeeApi.list().then(res => setEmployees(res.data))
 
-    // kakao.maps.load()로 확실한 초기화
-    if (window.kakao?.maps) {
-      if (kakaoLoadedRef.current) return
-      window.kakao.maps.load(() => {
+    if (kakaoLoadedRef.current) return
+    loadKakaoMapSdk()
+      .then(() => {
         kakaoLoadedRef.current = true
         initMap()
       })
-    }
+      .catch(() => toast.error('카카오 지도를 불러오지 못했습니다'))
   }, [])
 
   const initMap = () => {
