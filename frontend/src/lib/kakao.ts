@@ -5,6 +5,11 @@ declare global {
 }
 
 const KAKAO_SDK_ID = 'kakao-map-sdk'
+const FALLBACK_KAKAO_JS_KEY = '92b199181912975f5c10cc85d977abdf'
+
+function getKakaoJsKey() {
+  return import.meta.env.VITE_KAKAO_MAP_KEY || import.meta.env.VITE_KAKAO_JS_KEY || FALLBACK_KAKAO_JS_KEY
+}
 
 export async function loadKakaoMapSdk(): Promise<any> {
   if (window.kakao?.maps?.LatLng) {
@@ -17,24 +22,28 @@ export async function loadKakaoMapSdk(): Promise<any> {
     })
   }
 
-  const appKey = import.meta.env.VITE_KAKAO_MAP_KEY
-  if (!appKey) {
-    throw new Error('VITE_KAKAO_MAP_KEY is not configured.')
-  }
-
   const existing = document.getElementById(KAKAO_SDK_ID) as HTMLScriptElement | null
   if (existing) {
     return new Promise((resolve, reject) => {
-      existing.addEventListener('load', () => window.kakao?.maps?.load(() => resolve(window.kakao)), { once: true })
-      existing.addEventListener('error', () => reject(new Error('카카오 지도 SDK를 불러오지 못했습니다.')), { once: true })
+      existing.addEventListener(
+        'load',
+        () => window.kakao?.maps?.load(() => resolve(window.kakao)),
+        { once: true },
+      )
+      existing.addEventListener(
+        'error',
+        () => reject(new Error('카카오 지도 SDK를 불러오지 못했습니다.')),
+        { once: true },
+      )
     })
   }
 
+  const script = document.createElement('script')
+  script.id = KAKAO_SDK_ID
+  script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${getKakaoJsKey()}&libraries=services&autoload=false`
+  script.async = true
+
   return new Promise((resolve, reject) => {
-    const script = document.createElement('script')
-    script.id = KAKAO_SDK_ID
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&libraries=services&autoload=false`
-    script.async = true
     script.onload = () => {
       window.kakao.maps.load(() => resolve(window.kakao))
     }
