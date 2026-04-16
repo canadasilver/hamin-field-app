@@ -1,17 +1,37 @@
-import { useEffect, useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ChevronLeft, Download, Filter, Loader2, Search, X } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import toast from 'react-hot-toast'
 import Header from '../components/common/Header'
 import { stationApi } from '../services/api'
-import { Search, Filter, X, ChevronLeft, Download, Loader2 } from 'lucide-react'
-import toast from 'react-hot-toast'
-import type { Station, CoolingInfo } from '../types'
-import * as XLSX from 'xlsx'
+import type { CoolingInfo, Station } from '../types'
+
+const STATUS_STYLES: Record<string, string> = {
+  양호: 'bg-green-50 text-green-600',
+  불량: 'bg-red-50 text-red-600',
+}
+
+function parseCoolingInfo(coolingInfo: Station['cooling_info']): CoolingInfo[] {
+  if (!coolingInfo) return []
+
+  if (typeof coolingInfo === 'string') {
+    try {
+      return JSON.parse(coolingInfo) as CoolingInfo[]
+    } catch {
+      return []
+    }
+  }
+
+  return coolingInfo
+}
 
 export default function StationListPage() {
   const { fileId } = useParams<{ fileId: string }>()
   const navigate = useNavigate()
   const [stations, setStations] = useState<Station[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [region, setRegion] = useState('')
   const [team, setTeam] = useState('')
@@ -20,24 +40,19 @@ export default function StationListPage() {
   const [showFilter, setShowFilter] = useState(false)
   const [selected, setSelected] = useState<Station | null>(null)
 
-  useEffect(() => {
-    loadFilters()
-  }, [fileId])
-
-  useEffect(() => {
-    loadStations()
-  }, [fileId, search, region, team])
-
-  const loadFilters = async () => {
+  const loadFilters = useCallback(async () => {
     try {
       const res = await stationApi.filters(fileId)
-      setRegions(res.data.regions)
-      setTeams(res.data.teams)
-    } catch {}
-  }
+      setRegions(res.data.regions ?? [])
+      setTeams(res.data.teams ?? [])
+    } catch {
+      toast.error('필터 정보를 불러오지 못했습니다.')
+    }
+  }, [fileId])
 
   const loadStations = useCallback(async () => {
     setLoading(true)
+
     try {
       const res = await stationApi.list({
         file_id: fileId,
@@ -46,108 +61,143 @@ export default function StationListPage() {
         team: team || undefined,
         limit: 200,
       })
-      setStations(res.data)
+
+      setStations(res.data ?? [])
     } catch {
-      toast.error('기지국 목록 로딩 실패')
+      toast.error('기지국 목록을 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [fileId, search, region, team])
+  }, [fileId, region, search, team])
+
+  useEffect(() => {
+    loadFilters()
+  }, [loadFilters])
+
+  useEffect(() => {
+    loadStations()
+  }, [loadStations])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [searchInput])
+
+  const rowCountLabel = useMemo(() => {
+    if (loading) return '검색 중...'
+    return `${stations.length}개 기지국`
+  }, [loading, stations.length])
 
   const handleExportExcel = () => {
-    if (stations.length === 0) return
-    const rows = stations.map((s, i) => ({
-      '번호': s.no || i + 1,
-      '국소명': s.station_name,
-      '운용팀': s.operation_team || '',
-      '담당자': s.manager || '',
-      '연락처': s.contact || '',
-      '주소': s.address || '',
-      '작업내용(25년)': s.work_2025 || '',
-      '점검결과': s.inspection_result || '',
-      '상태': s.status,
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '기지국 목록')
-    XLSX.writeFile(wb, `기지국_목록_${new Date().toISOString().split('T')[0]}.xlsx`)
-  }
+    if (stations.length === 0) {
+      toast.error('내보낼 기지국이 없습니다.')
+      return
+    }
 
-  // 검색 디바운스
-  const [searchInput, setSearchInput] = useState('')
-  useEffect(() => {
-    const timer = setTimeout(() => setSearch(searchInput), 300)
-    return () => clearTimeout(timer)
-  }, [searchInput])
+    const rows = stations.map((station, index) => ({
+      번호: station.no ?? index + 1,
+      기지국명: station.station_name,
+      운용팀: station.operation_team ?? '',
+      담당자: station.manager ?? '',
+      연락처: station.contact ?? '',
+      주소: station.address ?? '',
+      작업내용: station.work_2025 ?? '',
+      점검결과: station.inspection_result ?? '',
+      상태: station.status,
+    }))
+
+    const sheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, sheet, '기지국 목록')
+    XLSX.writeFile(workbook, `기지국목록_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <Header
         title="기지국 목록"
-        left={
-          <button onClick={() => navigate('/files')} className="p-2 text-gray-600">
+        left={(
+          <button onClick={() => navigate('/files')} className="p-2 text-gray-600" aria-label="뒤로가기">
             <ChevronLeft size={22} />
           </button>
-        }
-        right={
-          <button onClick={handleExportExcel} className="p-2 text-kt-red" title="엑셀 다운로드">
+        )}
+        right={(
+          <button
+            onClick={handleExportExcel}
+            className="p-2 text-kt-red"
+            title="엑셀 다운로드"
+            aria-label="엑셀 다운로드"
+          >
             <Download size={20} />
           </button>
-        }
+        )}
       />
 
-      <div className="max-w-lg mx-auto px-4 pt-4 space-y-3">
-        {/* 검색 + 필터 */}
+      <div className="mx-auto max-w-lg space-y-3 px-4 pt-4">
         <div className="flex gap-2">
-          <div className="flex-1 relative">
+          <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="국소명, 주소, 담당자 검색"
-              className="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="기지국명, 주소, 담당자 검색"
+              className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-kt-red/30"
             />
           </div>
+
           <button
-            onClick={() => setShowFilter(!showFilter)}
-            className={`px-3 py-2.5 rounded-xl border text-sm font-medium ${
-              region || team ? 'bg-kt-red text-white border-kt-red' : 'bg-white text-gray-600 border-gray-200'
+            onClick={() => setShowFilter((prev) => !prev)}
+            className={`rounded-xl border px-3 py-2.5 text-sm font-medium ${
+              region || team ? 'border-kt-red bg-kt-red text-white' : 'border-gray-200 bg-white text-gray-600'
             }`}
+            aria-label="필터 열기"
           >
             <Filter size={16} />
           </button>
         </div>
 
-        {/* 필터 패널 */}
         {showFilter && (
-          <div className="bg-white rounded-xl p-4 border border-gray-100 space-y-3">
+          <div className="space-y-3 rounded-xl border border-gray-100 bg-white p-4">
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">시/도</label>
+              <label className="mb-1 block text-xs font-medium text-gray-500">지역</label>
               <select
                 value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                onChange={(event) => setRegion(event.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               >
                 <option value="">전체</option>
-                {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+                {regions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
               </select>
             </div>
+
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">운용팀</label>
+              <label className="mb-1 block text-xs font-medium text-gray-500">운용팀</label>
               <select
                 value={team}
-                onChange={(e) => setTeam(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                onChange={(event) => setTeam(event.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               >
                 <option value="">전체</option>
-                {teams.map((t) => <option key={t} value={t}>{t}</option>)}
+                {teams.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
               </select>
             </div>
+
             {(region || team) && (
               <button
-                onClick={() => { setRegion(''); setTeam('') }}
-                className="text-xs text-kt-red font-medium"
+                onClick={() => {
+                  setRegion('')
+                  setTeam('')
+                }}
+                className="text-xs font-medium text-kt-red"
               >
                 필터 초기화
               </button>
@@ -155,146 +205,141 @@ export default function StationListPage() {
           </div>
         )}
 
-        {/* 결과 수 */}
-        <p className="text-xs text-gray-500">{loading ? '검색중...' : `${stations.length}개 기지국`}</p>
+        <p className="text-xs text-gray-500">{rowCountLabel}</p>
 
-        {/* 기지국 카드 목록 */}
         {loading ? (
-          <div className="text-center py-12">
+          <div className="py-12 text-center">
             <Loader2 size={24} className="mx-auto animate-spin text-gray-300" />
           </div>
         ) : stations.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">검색 결과가 없습니다</div>
+          <div className="py-12 text-center text-gray-400">검색 결과가 없습니다.</div>
         ) : (
           <div className="space-y-3">
-            {stations.map((s) => (
-              <div
-                key={s.id}
-                onClick={() => setSelected(s)}
-                className="bg-white rounded-2xl p-4 border border-gray-100 active:bg-gray-50 cursor-pointer"
+            {stations.map((station) => (
+              <button
+                key={station.id}
+                type="button"
+                onClick={() => setSelected(station)}
+                className="w-full cursor-pointer rounded-2xl border border-gray-100 bg-white p-4 text-left active:bg-gray-50"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      {s.no && <span className="text-xs text-gray-400">#{s.no}</span>}
-                      <h3 className="font-bold text-gray-900">{s.station_name}</h3>
+                      {station.no != null && <span className="text-xs text-gray-400">#{station.no}</span>}
+                      <h3 className="font-bold text-gray-900">{station.station_name}</h3>
                     </div>
-                    {s.address && <p className="text-xs text-gray-500 mt-1">{s.address}</p>}
+                    {station.address && <p className="mt-1 text-xs text-gray-500">{station.address}</p>}
                   </div>
-                  {s.inspection_result && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      s.inspection_result === '양호' ? 'bg-green-50 text-green-600' :
-                      s.inspection_result === '불량' ? 'bg-red-50 text-red-600' :
-                      'bg-gray-50 text-gray-500'
-                    }`}>
-                      {s.inspection_result}
+
+                  {station.inspection_result && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        STATUS_STYLES[station.inspection_result] ?? 'bg-gray-50 text-gray-500'
+                      }`}
+                    >
+                      {station.inspection_result}
                     </span>
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
-                  {s.operation_team && <span>{s.operation_team}</span>}
-                </div>
+                {station.operation_team && (
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                    <span>{station.operation_team}</span>
+                  </div>
+                )}
 
-                {s.work_2025 && (
-                  <p className="mt-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 line-clamp-2">
-                    {s.work_2025}
+                {station.work_2025 && (
+                  <p className="mt-2 line-clamp-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                    {station.work_2025}
                   </p>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}
       </div>
 
-      {/* 상세 팝업 */}
-      {selected && (
-        <StationDetailModal station={selected} onClose={() => setSelected(null)} />
-      )}
+      {selected && <StationDetailModal station={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
 
-function StationDetailModal({ station: s, onClose }: { station: Station; onClose: () => void }) {
-  const cooling: CoolingInfo[] = typeof s.cooling_info === 'string'
-    ? JSON.parse(s.cooling_info)
-    : s.cooling_info || []
+function StationDetailModal({ station, onClose }: { station: Station; onClose: () => void }) {
+  const coolingInfo = parseCoolingInfo(station.cooling_info)
+  const workHistoryEntries: Array<[string, string]> = (
+    station.work_history && Object.keys(station.work_history).length > 0
+      ? Object.entries(station.work_history)
+      : [
+          ['2021', station.work_2021],
+          ['2022', station.work_2022],
+          ['2023', station.work_2023],
+          ['2024', station.work_2024],
+          ['2025', station.work_2025],
+        ]
+  )
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .sort(([yearA], [yearB]) => yearA.localeCompare(yearB))
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center">
-      <div className="bg-white w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
-        {/* 헤더 */}
-        <div className="sticky top-0 bg-white px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-bold text-lg text-gray-900">{s.station_name}</h2>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white sm:rounded-2xl">
+        <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
+          <h2 className="text-lg font-bold text-gray-900">{station.station_name}</h2>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600" aria-label="닫기">
             <X size={22} />
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-5">
-          {/* 기본 정보 */}
+        <div className="space-y-5 px-5 py-4">
           <Section title="기본 정보">
-            <InfoRow label="고유번호" value={s.unique_no} />
-            <InfoRow label="국소ID" value={s.station_id} />
-            <InfoRow label="네트워크단" value={s.network_group} />
-            <InfoRow label="장비유형" value={s.equipment_type} />
-            <InfoRow label="옥내/외" value={s.indoor_outdoor} />
-            <InfoRow label="운용수량" value={s.operation_count?.toString()} />
-            <InfoRow label="바코드" value={s.barcode} />
-            <InfoRow label="주소" value={s.address} />
-            <InfoRow label="건물명" value={s.building_name} />
+            <InfoRow label="고유번호" value={station.unique_no} />
+            <InfoRow label="기지국 ID" value={station.station_id} />
+            <InfoRow label="네트워크군" value={station.network_group} />
+            <InfoRow label="장비유형" value={station.equipment_type} />
+            <InfoRow label="실내외" value={station.indoor_outdoor} />
+            <InfoRow label="운용수량" value={station.operation_count?.toString()} />
+            <InfoRow label="바코드" value={station.barcode} />
+            <InfoRow label="주소" value={station.address} />
+            <InfoRow label="건물명" value={station.building_name} />
           </Section>
 
-          {/* 담당 정보 */}
           <Section title="담당 정보">
-            <InfoRow label="운용팀" value={s.operation_team} />
-            <InfoRow label="점검자" value={s.inspector} />
+            <InfoRow label="운용팀" value={station.operation_team} />
+            <InfoRow label="점검자" value={station.inspector} />
+            <InfoRow label="담당자" value={station.manager} />
+            <InfoRow label="연락처" value={station.contact} />
           </Section>
 
-          {/* 냉방기 정보 */}
-          {cooling.length > 0 && (
+          {coolingInfo.length > 0 && (
             <Section title="냉방기 정보">
-              {cooling.map((c, i) => (
-                <div key={i} className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
-                  <p className="font-medium text-gray-700">냉방기 {i + 1}</p>
-                  <InfoRow label="용량" value={c.capacity} />
-                  <InfoRow label="제조사" value={c.manufacturer} />
-                  <InfoRow label="취득일" value={c.acquired} />
+              {coolingInfo.map((item, index) => (
+                <div key={`${item.capacity ?? 'unit'}-${index}`} className="space-y-1 rounded-lg bg-gray-50 p-3 text-xs">
+                  <p className="font-medium text-gray-700">냉방기 {index + 1}</p>
+                  <InfoRow label="용량" value={item.capacity} />
+                  <InfoRow label="제조사" value={item.manufacturer} />
+                  <InfoRow label="취득일" value={item.acquired} />
                 </div>
               ))}
             </Section>
           )}
 
-          {/* 작업 이력 */}
           <Section title="작업 이력">
-            {(s.work_history && Object.keys(s.work_history).length > 0
-              ? Object.entries(s.work_history)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([year, value]) => ({ year, value }))
-              : [
-                  { year: '2021', value: s.work_2021 },
-                  { year: '2022', value: s.work_2022 },
-                  { year: '2023', value: s.work_2023 },
-                  { year: '2024', value: s.work_2024 },
-                  { year: '2025', value: s.work_2025 },
-                ]
-            ).filter(w => w.value).map(w => (
-              <div key={w.year} className="flex text-xs">
-                <span className="text-[#215288] w-20 flex-shrink-0 font-medium">{w.year}년</span>
-                <span className="text-gray-700 flex-1">{w.value}</span>
+            {workHistoryEntries.map(([year, value]) => (
+              <div key={year} className="flex text-xs">
+                <span className="w-20 flex-shrink-0 font-medium text-[#215288]">{year}년</span>
+                <span className="flex-1 text-gray-700">{value}</span>
               </div>
             ))}
-            <InfoRow label="불량사항" value={s.defect} />
-            <InfoRow label="예정공정" value={s.planned_process} />
+            <InfoRow label="불량사항" value={station.defect} />
+            <InfoRow label="예정공정" value={station.planned_process} />
           </Section>
 
-          {/* 점검 결과 */}
           <Section title="점검 결과">
-            <InfoRow label="점검대상" value={s.inspection_target} />
-            <InfoRow label="점검결과" value={s.inspection_result} />
-            <InfoRow label="점검일자" value={s.inspection_date} />
-            <InfoRow label="등록여부" value={s.registration_status} />
-            <InfoRow label="등록일자" value={s.registration_date} />
+            <InfoRow label="점검대상" value={station.inspection_target} />
+            <InfoRow label="점검결과" value={station.inspection_result} />
+            <InfoRow label="점검일자" value={station.inspection_date} />
+            <InfoRow label="등록여부" value={station.registration_status} />
+            <InfoRow label="등록일자" value={station.registration_date} />
           </Section>
         </div>
       </div>
@@ -305,7 +350,7 @@ function StationDetailModal({ station: s, onClose }: { station: Station; onClose
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-sm font-bold text-gray-900 mb-2">{title}</h3>
+      <h3 className="mb-2 text-sm font-bold text-gray-900">{title}</h3>
       <div className="space-y-1.5">{children}</div>
     </div>
   )
@@ -313,10 +358,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null
+
   return (
     <div className="flex text-xs">
-      <span className="text-gray-400 w-20 flex-shrink-0">{label}</span>
-      <span className="text-gray-700 flex-1">{value}</span>
+      <span className="w-20 flex-shrink-0 text-gray-400">{label}</span>
+      <span className="flex-1 text-gray-700">{value}</span>
     </div>
   )
 }
