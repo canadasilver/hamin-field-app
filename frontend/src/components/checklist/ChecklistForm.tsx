@@ -100,7 +100,7 @@ export default function ChecklistForm({ scheduleId, status, stationId }: Checkli
       setNotes('')
       setStationHistory(prev => prev
         ? { ...prev, work_history: [res.data, ...prev.work_history] }
-        : { year_history: { '2021': null, '2022': null, '2023': null, '2024': null }, work_history: [res.data] }
+        : { year_history: {}, work_history: [res.data] }
       )
       toast.success('작업 이력이 저장되었습니다')
     } catch {
@@ -237,11 +237,13 @@ export default function ChecklistForm({ scheduleId, status, stationId }: Checkli
   if (loading) return <div className="p-4 text-center text-gray-400">로딩중...</div>
 
   const yearHistory = stationHistory
-    ? (['2021', '2022', '2023', '2024'] as const).map(y => ({
-        year: y,
-        label: `${y}년`,
-        value: stationHistory.year_history[y],
-      }))
+    ? Object.keys(stationHistory.year_history)
+        .sort()
+        .map(y => ({
+          year: y,
+          label: `${y}년`,
+          value: stationHistory.year_history[y],
+        }))
     : []
 
   // 관리자: 빈 연도도 표시 / 직원: 값 있는 연도만

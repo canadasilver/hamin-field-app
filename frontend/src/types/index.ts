@@ -49,6 +49,7 @@ export interface Station {
   operation_count: number | null
   cooling_info: CoolingInfo[] | null
   barcode: string | null
+  work_history: Record<string, string> | null
   work_2021: string | null
   work_2022: string | null
   work_2023: string | null
@@ -148,12 +149,7 @@ export interface WorkHistory {
 }
 
 export interface StationHistory {
-  year_history: {
-    '2021': string | null
-    '2022': string | null
-    '2023': string | null
-    '2024': string | null
-  }
+  year_history: Record<string, string | null>
   work_history: WorkHistory[]
 }
 

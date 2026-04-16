@@ -267,15 +267,20 @@ function StationDetailModal({ station: s, onClose }: { station: Station; onClose
 
           {/* 작업 이력 */}
           <Section title="작업 이력">
-            {[
-              { year: 2021, value: s.work_2021 },
-              { year: 2022, value: s.work_2022 },
-              { year: 2023, value: s.work_2023 },
-              { year: 2024, value: s.work_2024 },
-              { year: 2025, value: s.work_2025 },
-            ].filter(w => w.value).map(w => (
+            {(s.work_history && Object.keys(s.work_history).length > 0
+              ? Object.entries(s.work_history)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([year, value]) => ({ year, value }))
+              : [
+                  { year: '2021', value: s.work_2021 },
+                  { year: '2022', value: s.work_2022 },
+                  { year: '2023', value: s.work_2023 },
+                  { year: '2024', value: s.work_2024 },
+                  { year: '2025', value: s.work_2025 },
+                ]
+            ).filter(w => w.value).map(w => (
               <div key={w.year} className="flex text-xs">
-                <span className="text-kt-red w-20 flex-shrink-0 font-medium">{w.year}년</span>
+                <span className="text-[#215288] w-20 flex-shrink-0 font-medium">{w.year}년</span>
                 <span className="text-gray-700 flex-1">{w.value}</span>
               </div>
             ))}

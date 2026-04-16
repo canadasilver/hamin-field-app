@@ -59,14 +59,26 @@ async def get_station_history(station_id: str):
     """기지국 전체 작업 이력 통합 조회 (연도별 + work_history)"""
     db = get_supabase()
 
-    # stations 테이블에서 연도별 컬럼 직접 조회 (스키마 캐시 우회)
+    # stations 테이블에서 work_history JSONB + 기존 컬럼 동시 조회 (하위 호환)
     station_res = (
         db.table("stations")
-        .select("work_2021, work_2022, work_2023, work_2024")
+        .select("work_history, work_2021, work_2022, work_2023, work_2024, work_2025")
         .eq("id", station_id)
         .execute()
     )
     station_data = station_res.data[0] if station_res.data else {}
+
+    # work_history JSONB가 있으면 우선 사용, 없으면 기존 컬럼에서 구성
+    raw_json = station_data.get("work_history")
+    if raw_json and isinstance(raw_json, dict) and raw_json:
+        year_history = {k: v for k, v in raw_json.items() if v}
+    else:
+        # 기존 컬럼 fallback
+        year_history = {
+            k: station_data.get(f"work_{k}")
+            for k in ("2021", "2022", "2023", "2024", "2025")
+            if station_data.get(f"work_{k}")
+        }
 
     # work_history 최신순 조회
     history_res = (
@@ -79,12 +91,7 @@ async def get_station_history(station_id: str):
     )
 
     return {
-        "year_history": {
-            "2021": station_data.get("work_2021"),
-            "2022": station_data.get("work_2022"),
-            "2023": station_data.get("work_2023"),
-            "2024": station_data.get("work_2024"),
-        },
+        "year_history": year_history,
         "work_history": history_res.data or [],
     }
 
@@ -95,15 +102,37 @@ async def update_year_work(
     data: YearWorkUpdate,
     authorization: str = Header(...),
 ):
-    """연도별 작업 내용 수정 (관리자 전용)"""
+    """연도별 작업 내용 수정 (관리자 전용) — work_history JSONB 업데이트"""
     db = get_supabase()
     current_user = _get_current_user(authorization, db)
     if current_user.get("role") != "admin":
         raise HTTPException(403, "관리자만 수정할 수 있습니다.")
-    if data.year not in (2021, 2022, 2023, 2024):
-        raise HTTPException(400, "지원하지 않는 연도입니다.")
-    field = f"work_{data.year}"
-    result = db.table("stations").update({field: data.content}).eq("id", station_id).execute()
+    if data.year < 2000 or data.year > 2100:
+        raise HTTPException(400, "유효하지 않은 연도입니다.")
+
+    year_str = str(data.year)
+
+    # 현재 work_history 조회
+    station_res = db.table("stations").select("work_history").eq("id", station_id).execute()
+    if not station_res.data:
+        raise HTTPException(404, "기지국을 찾을 수 없습니다.")
+
+    current_json: dict = station_res.data[0].get("work_history") or {}
+    if not isinstance(current_json, dict):
+        current_json = {}
+
+    # 내용 업데이트: None이면 해당 연도 키 삭제
+    if data.content is None:
+        current_json.pop(year_str, None)
+    else:
+        current_json[year_str] = data.content
+
+    update_payload: dict = {"work_history": current_json}
+    # 하위 호환: 2021~2025 범위면 개별 컬럼도 동기화
+    if 2021 <= data.year <= 2025:
+        update_payload[f"work_{data.year}"] = data.content
+
+    result = db.table("stations").update(update_payload).eq("id", station_id).execute()
     if not result.data:
         raise HTTPException(404, "기지국을 찾을 수 없습니다.")
     return result.data[0]

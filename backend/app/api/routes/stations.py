@@ -6,6 +6,7 @@ from app.core.config import settings
 import pandas as pd
 import json
 import io
+import re
 import logging
 from datetime import date as _date, timedelta
 
@@ -195,14 +196,6 @@ def _parse_row(row, cols: set) -> dict | None:
     elif "주소" in cols:
         data["address"] = _safe_str(row.get("주소"))
 
-    # 작업내용: '25년 점검/조치내역' 우선, 없으면 '점검/조치내역', '작업내용'
-    if "25년 점검/조치내역" in cols:
-        data["work_2025"] = _safe_str(row.get("25년 점검/조치내역"))
-    elif "점검/조치내역" in cols:
-        data["work_2025"] = _safe_str(row.get("점검/조치내역"))
-    elif "작업내용" in cols:
-        data["work_2025"] = _safe_str(row.get("작업내용"))
-
     # 추가 컬럼 매핑
     simple_map = {
         "NO": "no",
@@ -213,10 +206,6 @@ def _parse_row(row, cols: set) -> dict | None:
         "국소ID": "station_id",
         "옥내/외구분": "indoor_outdoor",
         "바코드번호": "barcode",
-        "21년 점검/조치내역": "work_2021",
-        "22년 점검/조치내역": "work_2022",
-        "23년 점검/조치내역": "work_2023",
-        "24년 점검/조치내역": "work_2024",
         "불량사항": "defect",
         "운용팀": "operation_team",
         "건물명": "building_name",
@@ -233,6 +222,40 @@ def _parse_row(row, cols: set) -> dict | None:
             val = _safe_str(row.get(excel_col))
             if val:
                 data[db_col] = val
+
+    # 연도별 점검/조치내역 자동 감지 → work_history JSON으로 저장
+    # 패턴: "21년 점검/조치내역", "22년 점검/조치내역", ..., "25년 점검/조치내역" 등
+    _year_col_pattern = re.compile(r'^(\d{2})년\s*점검/조치내역$')
+    work_history: dict[str, str] = {}
+    for col in cols:
+        m = _year_col_pattern.match(str(col).strip())
+        if m:
+            short = int(m.group(1))
+            year = 2000 + short if short < 50 else 1900 + short
+            val = _safe_str(row.get(col))
+            if val:
+                work_history[str(year)] = val
+                # 하위 호환: work_YYYY 컬럼도 유지 (2021~2025)
+                if 2021 <= year <= 2025:
+                    data[f"work_{year}"] = val
+
+    # "점검/조치내역" 또는 "작업내용"을 현재 연도(fallback)로 처리
+    _current_year = str(_date.today().year)
+    if _current_year not in work_history:
+        fallback_val = ""
+        for alias in ("점검/조치내역", "작업내용"):
+            if alias in cols:
+                fallback_val = _safe_str(row.get(alias))
+                if fallback_val:
+                    break
+        if fallback_val:
+            work_history[_current_year] = fallback_val
+            year_int = int(_current_year)
+            if 2021 <= year_int <= 2025:
+                data[f"work_{year_int}"] = fallback_val
+
+    if work_history:
+        data["work_history"] = json.dumps(work_history, ensure_ascii=False)
 
     # 점검일자 추가 별칭 ("25년 점검일자", "점검일")
     if "inspection_date" not in data:
