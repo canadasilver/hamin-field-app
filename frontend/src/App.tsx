@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import BottomNav from './components/common/BottomNav'
@@ -12,6 +12,14 @@ import MapPage from './pages/MapPage'
 import ScheduleDetailPage from './pages/ScheduleDetailPage'
 import StationListPage from './pages/StationListPage'
 import TodayPage from './pages/TodayPage'
+import AdminGuard from './admin/AdminGuard'
+import AdminLayout from './admin/AdminLayout'
+import AdminDashboard from './admin/pages/Dashboard'
+import AdminStations from './admin/pages/Stations'
+import AdminEmployees from './admin/pages/Employees'
+import AdminSchedule from './admin/pages/Schedule'
+import AdminASChecklist from './admin/pages/ASChecklist'
+import AdminCooling from './admin/pages/Cooling'
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { user, loading } = useAuth()
@@ -31,7 +39,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   return <>{children}</>
 }
 
-function AppRoutes() {
+function MobileRoutes() {
   const { user, loading } = useAuth()
 
   if (loading) {
@@ -64,6 +72,36 @@ function AppRoutes() {
       {user && <BottomNav />}
     </div>
   )
+}
+
+function AppRoutes() {
+  const location = useLocation()
+  const isAdmin = location.pathname.startsWith('/admin')
+
+  if (isAdmin) {
+    return (
+      <Routes>
+        <Route
+          path="/admin"
+          element={
+            <AdminGuard>
+              <AdminLayout />
+            </AdminGuard>
+          }
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="stations" element={<AdminStations />} />
+          <Route path="employees" element={<AdminEmployees />} />
+          <Route path="schedule" element={<AdminSchedule />} />
+          <Route path="checklist" element={<AdminASChecklist />} />
+          <Route path="cooling" element={<AdminCooling />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/admin" replace />} />
+      </Routes>
+    )
+  }
+
+  return <MobileRoutes />
 }
 
 export default function App() {

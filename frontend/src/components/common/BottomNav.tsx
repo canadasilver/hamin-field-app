@@ -7,6 +7,7 @@ import {
   Home,
   LogOut,
   MapPin,
+  Monitor,
   Shuffle,
   Users,
 } from 'lucide-react'
@@ -19,6 +20,7 @@ const adminNavItems = [
   { path: '/employees', icon: Users, label: '직원' },
   { path: '/files', icon: FolderOpen, label: '파일' },
   { path: '/dashboard', icon: BarChart3, label: '대시보드' },
+  { path: '/admin', icon: Monitor, label: '관리자' },
 ]
 
 const employeeNavItems = [
