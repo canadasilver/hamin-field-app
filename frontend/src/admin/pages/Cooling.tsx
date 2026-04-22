@@ -14,7 +14,6 @@ interface CoolingForm {
 
 const EMPTY_FORM: CoolingForm = { unit_number: 1, capacity: '', manufacturer: '', acquisition_date: '' }
 
-// cooling_info는 런타임에 문자열로 올 수 있어 unknown으로 받아 안전하게 파싱
 function parseCoolingInfo(raw: unknown): CoolingInfo[] {
   if (!raw) return []
   try {

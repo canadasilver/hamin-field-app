@@ -291,17 +291,25 @@ def _parse_row(row, cols: set) -> dict | None:
             del data["no"]
 
     # 냉방기 정보 JSON
+    def _find_acq_col(num: int, cols: set) -> str | None:
+        """자산취득 컬럼명 찾기 (자산취득X 또는 자산취득일자X)"""
+        for variant in [f"자산취득일자{num}", f"자산취득{num}"]:
+            if variant in cols:
+                return variant
+        return None
+
     cooling_groups = [
-        ("냉방기 용량1", "냉방기 제조사1", "자산취득1"),
-        ("냉방기 용량2", "냉방기 제조사2", "자산취득일자2"),
-        ("냉방기 용량3", "냉방기 제조사3", "자산취득3"),
-        ("냉방기 용량4", "냉방기 제조사4", "자산취득일자4"),
+        ("냉방기 용량1", "냉방기 제조사1", 1),
+        ("냉방기 용량2", "냉방기 제조사2", 2),
+        ("냉방기 용량3", "냉방기 제조사3", 3),
+        ("냉방기 용량4", "냉방기 제조사4", 4),
     ]
     cooling = []
-    for cap_col, mfr_col, acq_col in cooling_groups:
+    for cap_col, mfr_col, acq_num in cooling_groups:
         cap = _safe_str(row.get(cap_col)) if cap_col in cols else ""
         mfr = _safe_str(row.get(mfr_col)) if mfr_col in cols else ""
-        acq = _safe_str(row.get(acq_col)) if acq_col in cols else ""
+        acq_col = _find_acq_col(acq_num, cols)
+        acq = _safe_str(row.get(acq_col)) if acq_col else ""
         if cap or mfr or acq:
             cooling.append({"capacity": cap, "manufacturer": mfr, "acquired": acq})
     if cooling:
