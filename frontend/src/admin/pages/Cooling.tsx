@@ -14,18 +14,15 @@ interface CoolingForm {
 
 const EMPTY_FORM: CoolingForm = { unit_number: 1, capacity: '', manufacturer: '', acquisition_date: '' }
 
-function parseCoolingInfo(raw: CoolingInfo[] | string | null | undefined): CoolingInfo[] {
+// cooling_info는 런타임에 문자열로 올 수 있어 unknown으로 받아 안전하게 파싱
+function parseCoolingInfo(raw: unknown): CoolingInfo[] {
   if (!raw) return []
-  if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(arr) ? (arr as CoolingInfo[]) : []
+  } catch {
+    return []
   }
-  return []
 }
 
 // work_history JSON 또는 work_20xx 개별 컬럼에서 연도별 이력 추출

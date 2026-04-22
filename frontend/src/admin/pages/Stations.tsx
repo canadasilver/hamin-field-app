@@ -5,6 +5,17 @@ import type { Station } from '../../types'
 
 const BRAND = '#215288'
 
+// cooling_info가 런타임에 문자열로 올 수 있어 안전하게 파싱
+function getCoolingCount(coolingInfo: unknown): number {
+  if (!coolingInfo) return 0
+  try {
+    const arr = typeof coolingInfo === 'string' ? JSON.parse(coolingInfo) : coolingInfo
+    return Array.isArray(arr) ? arr.length : 0
+  } catch {
+    return 0
+  }
+}
+
 interface StationForm {
   station_name: string
   address: string
@@ -87,7 +98,7 @@ export default function Stations() {
     }
   }
 
-  const coolingCount = (s: Station) => s.cooling_info?.length ?? 0
+  const coolingCount = (s: Station) => getCoolingCount(s.cooling_info)
 
   return (
     <div>
