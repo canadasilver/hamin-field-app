@@ -2,15 +2,14 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, Users, CalendarDays,
-  ClipboardList, Upload, ChevronLeft, ChevronRight, LogOut, Menu
+  ClipboardList, Shuffle, Grid, Upload, ChevronLeft, ChevronRight, LogOut, Menu
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 interface NavItem {
   path: string
   label: string
-  icon?: any
-  emoji?: string
+  icon: any
   end?: boolean
 }
 
@@ -20,8 +19,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/admin/employees', label: '직원 관리', icon: Users },
   { path: '/admin/schedule', label: '일정 관리', icon: CalendarDays },
   { path: '/admin/checklist', label: 'A/S 체크리스트', icon: ClipboardList },
-  { path: '/admin/assign', label: '기지국 배분', emoji: '🔀' },
-  { path: '/admin/schedule-view', label: '배분 현황', emoji: '📋' },
+  { path: '/admin/assign', label: '기지국 배분', icon: Shuffle },
+  { path: '/admin/schedule-view', label: '배분 현황', icon: Grid },
   { path: '/admin/upload', label: '파일 업로드', icon: Upload },
 ]
 
@@ -76,7 +75,7 @@ export default function AdminLayout() {
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-          {NAV_ITEMS.map(({ path, label, icon: Icon, emoji, end }) => (
+          {NAV_ITEMS.map(({ path, label, icon: Icon, end }) => (
             <NavLink
               key={path}
               to={path}
@@ -91,11 +90,7 @@ export default function AdminLayout() {
                 transition: 'background 0.15s'
               })}
             >
-              {Icon ? (
-                <Icon size={18} style={{ flexShrink: 0 }} />
-              ) : (
-                <span style={{ fontSize: 18, flexShrink: 0, lineHeight: 1 }}>{emoji}</span>
-              )}
+              <Icon size={18} style={{ flexShrink: 0 }} />
               {!collapsed && <span>{label}</span>}
             </NavLink>
           ))}
