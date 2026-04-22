@@ -618,6 +618,16 @@ async def delete_station(station_id: str):
     return {"message": "삭제되었습니다."}
 
 
+@router.patch("/{station_id}")
+async def update_station(station_id: str, body: dict):
+    """기지국 수정"""
+    db = get_supabase()
+    result = db.table("stations").update(body).eq("id", station_id).execute()
+    if not result.data:
+        raise HTTPException(404, "기지국을 찾을 수 없습니다.")
+    return result.data[0]
+
+
 FALLBACK_COORDS = {(c[0], c[1]) for c in REGION_FALLBACK_COORDS.values()}
 
 

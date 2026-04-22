@@ -57,6 +57,7 @@ export const stationApi = {
   get: (id: string) => api.get(`/stations/${id}`),
   filters: (fileId?: string) => api.get('/stations/filters', { params: fileId ? { file_id: fileId } : {} }),
   count: (fileId?: string) => api.get('/stations/count', { params: fileId ? { file_id: fileId } : {} }),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/stations/${id}`, data),
   delete: (id: string) => api.delete(`/stations/${id}`),
   geocodeMissing: () => api.post('/stations/geocode-missing'),
   getNotes: (stationId: string) => api.get(`/stations/${stationId}/notes`),

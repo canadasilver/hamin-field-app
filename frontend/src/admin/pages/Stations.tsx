@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Search, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { stationApi } from '../../services/api'
-import type { Station } from '../../types'
+import type { Station, CoolingInfo } from '../../types'
 
 const BRAND = '#215288'
 
-// cooling_info가 런타임에 문자열로 올 수 있어 안전하게 파싱
 function getCoolingCount(coolingInfo: unknown): number {
   if (!coolingInfo) return 0
   try {
@@ -16,14 +15,48 @@ function getCoolingCount(coolingInfo: unknown): number {
   }
 }
 
+function parseWorkHistory(record: unknown): Record<string, string> {
+  if (!record) return {}
+  if (typeof record === 'string') {
+    try {
+      return JSON.parse(record)
+    } catch {
+      return {}
+    }
+  }
+  if (typeof record === 'object') {
+    return record as Record<string, string>
+  }
+  return {}
+}
+
 interface StationForm {
   station_name: string
+  station_id: string
+  network_group: string
+  equipment_type: string
+  operation_count: string
   address: string
   manager: string
   contact: string
+  cooling_info: CoolingInfo[]
+  work_history: Record<string, string>
+  inspection_date: string
 }
 
-const EMPTY_FORM: StationForm = { station_name: '', address: '', manager: '', contact: '' }
+const EMPTY_ADD_FORM: StationForm = {
+  station_name: '',
+  station_id: '',
+  network_group: '',
+  equipment_type: '',
+  operation_count: '',
+  address: '',
+  manager: '',
+  contact: '',
+  cooling_info: [],
+  work_history: {},
+  inspection_date: '',
+}
 
 export default function Stations() {
   const [stations, setStations] = useState<Station[]>([])
@@ -33,7 +66,7 @@ export default function Stations() {
   const [error, setError] = useState('')
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [editTarget, setEditTarget] = useState<Station | null>(null)
-  const [form, setForm] = useState<StationForm>(EMPTY_FORM)
+  const [form, setForm] = useState<StationForm>(EMPTY_ADD_FORM)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
@@ -62,24 +95,56 @@ export default function Stations() {
     ))
   }, [search, stations])
 
-  const openAdd = () => { setForm(EMPTY_FORM); setEditTarget(null); setModal('add') }
+  const openAdd = () => { setForm(EMPTY_ADD_FORM); setEditTarget(null); setModal('add') }
   const openEdit = (s: Station) => {
-    setForm({ station_name: s.station_name, address: s.address ?? '', manager: s.manager ?? '', contact: s.contact ?? '' })
+    const coolingArr = Array.isArray(s.cooling_info) ? s.cooling_info : []
+    const workHist = parseWorkHistory(s.work_history)
+    setForm({
+      station_name: s.station_name,
+      station_id: s.station_id ?? '',
+      network_group: s.network_group ?? '',
+      equipment_type: s.equipment_type ?? '',
+      operation_count: s.operation_count?.toString() ?? '',
+      address: s.address ?? '',
+      manager: s.manager ?? '',
+      contact: s.contact ?? '',
+      cooling_info: coolingArr,
+      work_history: workHist,
+      inspection_date: s.inspection_date ?? '',
+    })
     setEditTarget(s)
     setModal('edit')
   }
-  const closeModal = () => { setModal(null); setEditTarget(null); setForm(EMPTY_FORM) }
+  const closeModal = () => { setModal(null); setEditTarget(null); setForm(EMPTY_ADD_FORM) }
 
   const handleSave = async () => {
     if (!form.station_name.trim()) return
     setSaving(true)
     try {
-      if (modal === 'edit' && editTarget) {
-        await stationApi.list() // placeholder — update via backend if endpoint exists
-        // Note: stationApi has no update endpoint, reflecting actual API
+      if (modal === 'add') {
+        // Add는 아직 backend에서 지원하지 않는 경우가 많음 - placeholder 유지
+        setError('현재 등록 기능은 엑셀 업로드를 통해서만 가능합니다.')
+        setSaving(false)
+        return
       }
-      await load()
-      closeModal()
+      if (modal === 'edit' && editTarget) {
+        const payload: Record<string, unknown> = {
+          station_name: form.station_name,
+          station_id: form.station_id || null,
+          network_group: form.network_group || null,
+          equipment_type: form.equipment_type || null,
+          operation_count: form.operation_count ? Number(form.operation_count) : null,
+          address: form.address || null,
+          manager: form.manager || null,
+          contact: form.contact || null,
+          cooling_info: form.cooling_info.length > 0 ? form.cooling_info : null,
+          work_history: Object.keys(form.work_history).length > 0 ? form.work_history : null,
+          inspection_date: form.inspection_date || null,
+        }
+        await stationApi.update(editTarget.id, payload)
+        await load()
+        closeModal()
+      }
     } catch {
       setError('저장에 실패했습니다.')
     } finally {
@@ -169,9 +234,9 @@ export default function Stations() {
         )}
       </div>
 
-      {/* Add/Edit Modal */}
-      {modal && (
-        <Modal title={modal === 'add' ? '기지국 등록' : '기지국 수정'} onClose={closeModal}>
+      {/* Add Modal */}
+      {modal === 'add' && (
+        <Modal title="기지국 등록" onClose={closeModal}>
           <FormField label="기지국명 *">
             <input value={form.station_name} onChange={e => setForm({ ...form, station_name: e.target.value })} style={inputStyle} placeholder="기지국명 입력" />
           </FormField>
@@ -191,6 +256,150 @@ export default function Stations() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* Edit Modal */}
+      {modal === 'edit' && editTarget && (
+        <LargeModal title="기지국 수정" onClose={closeModal}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {/* 기본 정보 */}
+            <Section title="기본 정보">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormField label="기지국명 *">
+                  <input value={form.station_name} onChange={e => setForm({ ...form, station_name: e.target.value })} style={inputStyle} placeholder="기지국명" />
+                </FormField>
+                <FormField label="기지국 ID">
+                  <input value={form.station_id} onChange={e => setForm({ ...form, station_id: e.target.value })} style={inputStyle} placeholder="기지국 ID" />
+                </FormField>
+                <FormField label="네트워크권">
+                  <input value={form.network_group} onChange={e => setForm({ ...form, network_group: e.target.value })} style={inputStyle} placeholder="네트워크권" />
+                </FormField>
+                <FormField label="장비유형">
+                  <input value={form.equipment_type} onChange={e => setForm({ ...form, equipment_type: e.target.value })} style={inputStyle} placeholder="장비유형" />
+                </FormField>
+                <FormField label="운용수량">
+                  <input value={form.operation_count} onChange={e => setForm({ ...form, operation_count: e.target.value })} style={inputStyle} placeholder="운용수량" type="number" />
+                </FormField>
+              </div>
+              <FormField label="주소">
+                <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} style={inputStyle} placeholder="주소" />
+              </FormField>
+            </Section>
+
+            {/* 담당 정보 */}
+            <Section title="담당 정보">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormField label="담당자">
+                  <input value={form.manager} onChange={e => setForm({ ...form, manager: e.target.value })} style={inputStyle} placeholder="담당자명" />
+                </FormField>
+                <FormField label="연락처">
+                  <input value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
+                </FormField>
+              </div>
+            </Section>
+
+            {/* 냉방기 정보 */}
+            <Section title="냉방기 정보">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {form.cooling_info.length === 0 ? (
+                  <p style={{ fontSize: 13, color: '#9ca3af' }}>냉방기 정보가 없습니다.</p>
+                ) : (
+                  form.cooling_info.map((c, i) => (
+                    <div key={i} style={{ background: '#f9fafb', padding: 12, borderRadius: 8, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
+                      <div>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>용량</label>
+                        <input value={c.capacity ?? ''} onChange={e => {
+                          const arr = [...form.cooling_info]; arr[i].capacity = e.target.value; setForm({ ...form, cooling_info: arr })
+                        }} style={inputStyle} placeholder="용량" />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>제조사</label>
+                        <input value={c.manufacturer ?? ''} onChange={e => {
+                          const arr = [...form.cooling_info]; arr[i].manufacturer = e.target.value; setForm({ ...form, cooling_info: arr })
+                        }} style={inputStyle} placeholder="제조사" />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>취득일</label>
+                        <input value={c.acquired ?? ''} onChange={e => {
+                          const arr = [...form.cooling_info]; arr[i].acquired = e.target.value; setForm({ ...form, cooling_info: arr })
+                        }} style={inputStyle} placeholder="YYYY-MM-DD" />
+                      </div>
+                      <button onClick={() => {
+                        const arr = form.cooling_info.filter((_, idx) => idx !== i)
+                        setForm({ ...form, cooling_info: arr })
+                      }} style={{ padding: '6px 10px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        삭제
+                      </button>
+                    </div>
+                  ))
+                )}
+                <button
+                  onClick={() => setForm({ ...form, cooling_info: [...form.cooling_info, { capacity: null, manufacturer: null, acquired: null }] })}
+                  style={{ padding: '8px 12px', background: '#eff6ff', color: BRAND, border: `1px solid ${BRAND}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+                >
+                  + 냉방기 추가
+                </button>
+              </div>
+            </Section>
+
+            {/* 작업 이력 */}
+            <Section title="작업 이력">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {Object.keys(form.work_history).length === 0 ? (
+                  <p style={{ fontSize: 13, color: '#9ca3af' }}>작업 이력이 없습니다.</p>
+                ) : (
+                  Object.entries(form.work_history).map(([year, content]) => (
+                    <div key={year} style={{ background: '#f9fafb', padding: 12, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <div style={{ minWidth: 60 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>연도</label>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginTop: 6 }}>{year}년</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>작업내용</label>
+                        <textarea value={content ?? ''} onChange={e => {
+                          setForm({ ...form, work_history: { ...form.work_history, [year]: e.target.value } })
+                        }} style={{ ...inputStyle, minHeight: 60, fontFamily: 'inherit' }} placeholder="작업내용" />
+                      </div>
+                      <button onClick={() => {
+                        const hist = { ...form.work_history }
+                        delete hist[year]
+                        setForm({ ...form, work_history: hist })
+                      }} style={{ padding: '6px 10px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginTop: 26 }}>
+                        삭제
+                      </button>
+                    </div>
+                  ))
+                )}
+                <button
+                  onClick={() => {
+                    const year = new Date().getFullYear().toString()
+                    if (!form.work_history[year]) {
+                      setForm({ ...form, work_history: { ...form.work_history, [year]: '' } })
+                    }
+                  }}
+                  style={{ padding: '8px 12px', background: '#eff6ff', color: BRAND, border: `1px solid ${BRAND}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, alignSelf: 'flex-start' }}
+                >
+                  + 연도 추가
+                </button>
+              </div>
+            </Section>
+
+            {/* 점검 정보 */}
+            <Section title="점검 정보">
+              <FormField label="점검일자">
+                <input value={form.inspection_date} onChange={e => setForm({ ...form, inspection_date: e.target.value })} style={inputStyle} type="date" />
+              </FormField>
+            </Section>
+
+            {/* 버튼 */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button onClick={closeModal} style={cancelBtnStyle}>취소</button>
+              <button onClick={handleSave} disabled={saving || !form.station_name.trim()} style={saveBtnStyle(saving || !form.station_name.trim())}>
+                {saving ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          </div>
+        </LargeModal>
       )}
 
       {/* Delete Confirm */}
@@ -239,10 +448,33 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   )
 }
 
+function LargeModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: '90%', maxWidth: 860, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, position: 'sticky', top: 0, background: '#fff', paddingBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h3>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={20} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 0 }}>
       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ paddingBottom: 16, borderBottom: '1px solid #e5e7eb' }}>
+      <h4 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700, color: '#111827' }}>{title}</h4>
       {children}
     </div>
   )
