@@ -15,19 +15,30 @@ function getCoolingCount(coolingInfo: unknown): number {
   }
 }
 
-function parseWorkHistory(record: unknown): Record<string, string> {
-  if (!record) return {}
-  if (typeof record === 'string') {
-    try {
-      return JSON.parse(record)
-    } catch {
-      return {}
-    }
+function parseCoolingInfo(raw: unknown): CoolingInfo[] {
+  if (!raw) return []
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(arr) ? (arr as CoolingInfo[]) : []
+  } catch {
+    return []
   }
-  if (typeof record === 'object') {
-    return record as Record<string, string>
-  }
-  return {}
+}
+
+function parseWorkHistory(s: Station): Array<[string, string]> {
+  const fromJson =
+    s.work_history && Object.keys(s.work_history).length > 0
+      ? Object.entries(s.work_history)
+      : [
+          ['2021', s.work_2021],
+          ['2022', s.work_2022],
+          ['2023', s.work_2023],
+          ['2024', s.work_2024],
+          ['2025', s.work_2025],
+        ]
+  return (fromJson as Array<[string, string | null]>)
+    .filter((e): e is [string, string] => Boolean(e[1]))
+    .sort(([a], [b]) => a.localeCompare(b))
 }
 
 interface StationForm {
@@ -97,8 +108,9 @@ export default function Stations() {
 
   const openAdd = () => { setForm(EMPTY_ADD_FORM); setEditTarget(null); setModal('add') }
   const openEdit = (s: Station) => {
-    const coolingArr = Array.isArray(s.cooling_info) ? s.cooling_info : []
-    const workHist = parseWorkHistory(s.work_history)
+    const coolingArr = parseCoolingInfo(s.cooling_info)
+    const workHistArr = parseWorkHistory(s)
+    const workHist = Object.fromEntries(workHistArr)
     setForm({
       station_name: s.station_name,
       station_id: s.station_id ?? '',
@@ -300,88 +312,96 @@ export default function Stations() {
 
             {/* 냉방기 정보 */}
             <Section title="냉방기 정보">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {form.cooling_info.length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#9ca3af' }}>냉방기 정보가 없습니다.</p>
-                ) : (
-                  form.cooling_info.map((c, i) => (
-                    <div key={i} style={{ background: '#f9fafb', padding: 12, borderRadius: 8, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
-                      <div>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>용량</label>
-                        <input value={c.capacity ?? ''} onChange={e => {
-                          const arr = [...form.cooling_info]; arr[i].capacity = e.target.value; setForm({ ...form, cooling_info: arr })
-                        }} style={inputStyle} placeholder="용량" />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>제조사</label>
-                        <input value={c.manufacturer ?? ''} onChange={e => {
-                          const arr = [...form.cooling_info]; arr[i].manufacturer = e.target.value; setForm({ ...form, cooling_info: arr })
-                        }} style={inputStyle} placeholder="제조사" />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>취득일</label>
-                        <input value={c.acquired ?? ''} onChange={e => {
-                          const arr = [...form.cooling_info]; arr[i].acquired = e.target.value; setForm({ ...form, cooling_info: arr })
-                        }} style={inputStyle} placeholder="YYYY-MM-DD" />
-                      </div>
-                      <button onClick={() => {
-                        const arr = form.cooling_info.filter((_, idx) => idx !== i)
-                        setForm({ ...form, cooling_info: arr })
-                      }} style={{ padding: '6px 10px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                        삭제
-                      </button>
-                    </div>
-                  ))
-                )}
-                <button
-                  onClick={() => setForm({ ...form, cooling_info: [...form.cooling_info, { capacity: null, manufacturer: null, acquired: null }] })}
-                  style={{ padding: '8px 12px', background: '#eff6ff', color: BRAND, border: `1px solid ${BRAND}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
-                >
-                  + 냉방기 추가
-                </button>
-              </div>
+              {form.cooling_info.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#9ca3af' }}>냉방기 정보가 없습니다.</p>
+              ) : (
+                <div style={{ overflowX: 'auto', marginBottom: 12 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: '#eff6ff' }}>
+                        {['번호', '용량', '제조사/모델', '취득일', ''].map(h => (
+                          <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#374151', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {form.cooling_info.map((c, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: BRAND }}>#{i + 1}</td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <input value={c.capacity ?? ''} onChange={e => {
+                              const arr = [...form.cooling_info]; arr[i].capacity = e.target.value; setForm({ ...form, cooling_info: arr })
+                            }} style={{ ...inputStyle, width: 80 }} placeholder="용량" />
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <input value={c.manufacturer ?? ''} onChange={e => {
+                              const arr = [...form.cooling_info]; arr[i].manufacturer = e.target.value; setForm({ ...form, cooling_info: arr })
+                            }} style={{ ...inputStyle, width: 120 }} placeholder="제조사" />
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <input value={c.acquired ?? ''} onChange={e => {
+                              const arr = [...form.cooling_info]; arr[i].acquired = e.target.value; setForm({ ...form, cooling_info: arr })
+                            }} style={{ ...inputStyle, width: 100 }} placeholder="YYYY-MM-DD" type="date" />
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <button onClick={() => {
+                              const arr = form.cooling_info.filter((_, idx) => idx !== i)
+                              setForm({ ...form, cooling_info: arr })
+                            }} style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <button
+                onClick={() => setForm({ ...form, cooling_info: [...form.cooling_info, { capacity: null, manufacturer: null, acquired: null }] })}
+                style={{ padding: '8px 12px', background: '#eff6ff', color: BRAND, border: `1px solid ${BRAND}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, alignSelf: 'flex-start' }}
+              >
+                + 냉방기 추가
+              </button>
             </Section>
 
             {/* 작업 이력 */}
             <Section title="작업 이력">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {Object.keys(form.work_history).length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#9ca3af' }}>작업 이력이 없습니다.</p>
-                ) : (
-                  Object.entries(form.work_history).map(([year, content]) => (
-                    <div key={year} style={{ background: '#f9fafb', padding: 12, borderRadius: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <div style={{ minWidth: 60 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>연도</label>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginTop: 6 }}>{year}년</div>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>작업내용</label>
+              {Object.keys(form.work_history).length === 0 ? (
+                <p style={{ fontSize: 13, color: '#9ca3af' }}>작업 이력이 없습니다.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
+                  {Object.entries(form.work_history)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([year, content]) => (
+                      <div key={year} style={{ display: 'grid', gridTemplateColumns: '60px 1fr auto', gap: 12, alignItems: 'flex-start', padding: '12px', background: '#f9fafb', borderRadius: 8 }}>
+                        <span style={{ fontWeight: 700, color: BRAND, flexShrink: 0 }}>{year}년</span>
                         <textarea value={content ?? ''} onChange={e => {
                           setForm({ ...form, work_history: { ...form.work_history, [year]: e.target.value } })
-                        }} style={{ ...inputStyle, minHeight: 60, fontFamily: 'inherit' }} placeholder="작업내용" />
+                        }} style={{ ...inputStyle, minHeight: 60, fontFamily: 'inherit', margin: 0 }} placeholder="작업내용" />
+                        <button onClick={() => {
+                          const hist = { ...form.work_history }
+                          delete hist[year]
+                          setForm({ ...form, work_history: hist })
+                        }} style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0, marginTop: 6 }}>
+                          <Trash2 size={13} />
+                        </button>
                       </div>
-                      <button onClick={() => {
-                        const hist = { ...form.work_history }
-                        delete hist[year]
-                        setForm({ ...form, work_history: hist })
-                      }} style={{ padding: '6px 10px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginTop: 26 }}>
-                        삭제
-                      </button>
-                    </div>
-                  ))
-                )}
-                <button
-                  onClick={() => {
-                    const year = new Date().getFullYear().toString()
-                    if (!form.work_history[year]) {
-                      setForm({ ...form, work_history: { ...form.work_history, [year]: '' } })
-                    }
-                  }}
-                  style={{ padding: '8px 12px', background: '#eff6ff', color: BRAND, border: `1px solid ${BRAND}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, alignSelf: 'flex-start' }}
-                >
-                  + 연도 추가
-                </button>
-              </div>
+                    ))
+                  }
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  const year = new Date().getFullYear().toString()
+                  if (!form.work_history[year]) {
+                    setForm({ ...form, work_history: { ...form.work_history, [year]: '' } })
+                  }
+                }}
+                style={{ padding: '8px 12px', background: '#eff6ff', color: BRAND, border: `1px solid ${BRAND}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, alignSelf: 'flex-start' }}
+              >
+                + 연도 추가
+              </button>
             </Section>
 
             {/* 점검 정보 */}
