@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, Users, CalendarDays,
-  ClipboardList, Wind, ChevronLeft, ChevronRight, LogOut, Menu
+  ClipboardList, Wind, Upload, ChevronLeft, ChevronRight, LogOut, Menu
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { path: '/admin/schedule', label: '일정 관리', icon: CalendarDays },
   { path: '/admin/checklist', label: 'A/S 체크리스트', icon: ClipboardList },
   { path: '/admin/cooling', label: '냉방기 관리', icon: Wind },
+  { path: '/admin/upload', label: '파일 업로드', icon: Upload },
 ]
 
 const PAGE_TITLES: Record<string, string> = {
@@ -22,6 +23,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/schedule': '일정 관리',
   '/admin/checklist': 'A/S 체크리스트',
   '/admin/cooling': '냉방기 관리',
+  '/admin/upload': '파일 업로드',
 }
 
 const BRAND = '#215288'

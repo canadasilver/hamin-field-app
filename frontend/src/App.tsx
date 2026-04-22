@@ -20,6 +20,7 @@ import AdminEmployees from './admin/pages/Employees'
 import AdminSchedule from './admin/pages/Schedule'
 import AdminASChecklist from './admin/pages/ASChecklist'
 import AdminCooling from './admin/pages/Cooling'
+import AdminUpload from './admin/pages/Upload'
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { user, loading } = useAuth()
@@ -95,6 +96,7 @@ function AppRoutes() {
           <Route path="schedule" element={<AdminSchedule />} />
           <Route path="checklist" element={<AdminASChecklist />} />
           <Route path="cooling" element={<AdminCooling />} />
+          <Route path="upload" element={<AdminUpload />} />
         </Route>
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
