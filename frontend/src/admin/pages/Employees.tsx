@@ -5,17 +5,36 @@ import type { Employee } from '../../types'
 
 const BRAND = '#215288'
 
-interface EmpForm {
+// 추가 전용 폼 — 앱 EmployeesPage의 CreateForm과 동일
+interface CreateForm {
+  name: string
+  contact: string
+  username: string
+  password: string
+  confirmPassword: string
+  max_daily_tasks: number
+  per_task_rate: number
+  resident_number: string
+  vehicle_number: string
+  memo: string
+}
+
+const EMPTY_CREATE: CreateForm = {
+  name: '', contact: '', username: '', password: '', confirmPassword: '',
+  max_daily_tasks: 5, per_task_rate: 0,
+  resident_number: '', vehicle_number: '', memo: '',
+}
+
+// 수정 전용 폼 (비밀번호는 pw 모달에서 따로 처리)
+interface EditForm {
   name: string
   contact: string
   max_daily_tasks: number
   per_task_rate: number
+  resident_number: string
   vehicle_number: string
   memo: string
-  is_active: boolean
 }
-
-const EMPTY_FORM: EmpForm = { name: '', contact: '', max_daily_tasks: 5, per_task_rate: 0, vehicle_number: '', memo: '', is_active: true }
 
 interface PwForm { username: string; password: string }
 
@@ -25,10 +44,13 @@ export default function Employees() {
   const [error, setError] = useState('')
   const [modal, setModal] = useState<'add' | 'edit' | 'pw' | null>(null)
   const [target, setTarget] = useState<Employee | null>(null)
-  const [form, setForm] = useState<EmpForm>(EMPTY_FORM)
+  const [createForm, setCreateForm] = useState<CreateForm>(EMPTY_CREATE)
+  const [editForm, setEditForm] = useState<EditForm>({ name: '', contact: '', max_daily_tasks: 5, per_task_rate: 0, resident_number: '', vehicle_number: '', memo: '' })
   const [pwForm, setPwForm] = useState<PwForm>({ username: '', password: '' })
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // 비밀번호 확인 불일치 표시
+  const pwMismatch = createForm.confirmPassword !== '' && createForm.password !== createForm.confirmPassword
 
   const load = async () => {
     try {
@@ -44,29 +66,71 @@ export default function Employees() {
 
   useEffect(() => { load() }, [])
 
-  const openAdd = () => { setForm(EMPTY_FORM); setTarget(null); setModal('add') }
+  const openAdd = () => { setCreateForm(EMPTY_CREATE); setModal('add') }
   const openEdit = (e: Employee) => {
-    setForm({ name: e.name, contact: e.contact, max_daily_tasks: e.max_daily_tasks, per_task_rate: e.per_task_rate, vehicle_number: e.vehicle_number ?? '', memo: e.memo ?? '', is_active: e.is_active })
-    setTarget(e); setModal('edit')
+    setEditForm({ name: e.name, contact: e.contact, max_daily_tasks: e.max_daily_tasks, per_task_rate: e.per_task_rate, resident_number: e.resident_number ?? '', vehicle_number: e.vehicle_number ?? '', memo: e.memo ?? '' })
+    setTarget(e)
+    setModal('edit')
   }
   const openPw = (e: Employee) => { setPwForm({ username: e.username ?? '', password: '' }); setTarget(e); setModal('pw') }
-  const closeModal = () => { setModal(null); setTarget(null) }
+  const closeModal = () => { setModal(null); setTarget(null); setError('') }
 
-  const handleSave = async () => {
-    if (!form.name.trim()) return
+  // ── 직원 추가 (앱과 동일한 로직) ──
+  const handleCreate = async () => {
+    setError('')
+    const f = createForm
+    if (!f.name.trim() || !f.contact.trim()) { setError('이름과 연락처를 입력하세요.'); return }
+    if (!f.username.trim()) { setError('아이디를 입력하세요.'); return }
+    if (!f.password) { setError('비밀번호를 입력하세요.'); return }
+    if (f.password !== f.confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return }
+
     setSaving(true)
     try {
-      if (modal === 'add') await employeeApi.create(form)
-      else if (modal === 'edit' && target) await employeeApi.update(target.id, form)
+      await employeeApi.create({
+        name: f.name.trim(),
+        contact: f.contact.trim(),
+        username: f.username.trim(),
+        password: f.password,
+        max_daily_tasks: Number(f.max_daily_tasks) || 5,
+        per_task_rate: Number(f.per_task_rate) || 0,
+        ...(f.resident_number.trim() && { resident_number: f.resident_number.trim() }),
+        ...(f.vehicle_number.trim() && { vehicle_number: f.vehicle_number.trim() }),
+        ...(f.memo.trim() && { memo: f.memo.trim() }),
+      })
       await load()
       closeModal()
-    } catch {
-      setError('저장에 실패했습니다.')
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(typeof detail === 'string' ? detail : '등록에 실패했습니다.')
     } finally {
       setSaving(false)
     }
   }
 
+  // ── 직원 수정 ──
+  const handleEdit = async () => {
+    if (!target || !editForm.name.trim()) { setError('이름을 입력하세요.'); return }
+    setSaving(true)
+    try {
+      await employeeApi.update(target.id, {
+        name: editForm.name.trim(),
+        contact: editForm.contact.trim(),
+        max_daily_tasks: Number(editForm.max_daily_tasks) || 5,
+        per_task_rate: Number(editForm.per_task_rate) || 0,
+        resident_number: editForm.resident_number.trim() || null,
+        vehicle_number: editForm.vehicle_number.trim() || null,
+        memo: editForm.memo.trim() || null,
+      })
+      await load()
+      closeModal()
+    } catch {
+      setError('수정에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ── 비밀번호/계정 처리 ──
   const handlePwSave = async () => {
     if (!target || !pwForm.password.trim()) return
     setSaving(true)
@@ -81,6 +145,7 @@ export default function Employees() {
     }
   }
 
+  // ── 삭제 ──
   const handleDelete = async () => {
     if (!deleteId) return
     try {
@@ -100,8 +165,9 @@ export default function Employees() {
         </button>
       </div>
 
-      {error && <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13 }}>{error}</div>}
+      {error && !modal && <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13 }}>{error}</div>}
 
+      {/* 직원 목록 테이블 */}
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid #f3f4f6', fontSize: 13, color: '#6b7280' }}>총 {employees.length}명</div>
         {loading ? (
@@ -147,45 +213,107 @@ export default function Employees() {
         )}
       </div>
 
-      {/* Add/Edit Modal */}
-      {(modal === 'add' || modal === 'edit') && (
-        <Modal title={modal === 'add' ? '직원 추가' : '직원 수정'} onClose={closeModal}>
+      {/* ── 직원 추가 모달 (앱과 동일한 필드) ── */}
+      {modal === 'add' && (
+        <Modal title="새 직원 등록" onClose={closeModal}>
+          {error && <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>{error}</div>}
+
           <FormField label="이름 *">
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} placeholder="직원 이름" />
+            <input value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })} style={inputStyle} placeholder="직원 이름" />
           </FormField>
           <FormField label="연락처">
-            <input value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
+            <input type="tel" value={createForm.contact} onChange={e => setCreateForm({ ...createForm, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
+          </FormField>
+          <FormField label="아이디 *">
+            <input value={createForm.username} onChange={e => setCreateForm({ ...createForm, username: e.target.value })} style={inputStyle} placeholder="로그인에 사용할 아이디" autoComplete="off" />
+          </FormField>
+          <FormField label="비밀번호 *">
+            <input type="password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} style={inputStyle} placeholder="비밀번호" autoComplete="new-password" />
+          </FormField>
+          <FormField label="비밀번호 확인 *">
+            <input
+              type="password"
+              value={createForm.confirmPassword}
+              onChange={e => setCreateForm({ ...createForm, confirmPassword: e.target.value })}
+              style={{ ...inputStyle, borderColor: pwMismatch ? '#ef4444' : '#e5e7eb' }}
+              placeholder="비밀번호 재입력"
+              autoComplete="new-password"
+            />
+            {pwMismatch && <p style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>비밀번호가 일치하지 않습니다.</p>}
           </FormField>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <FormField label="하루 최대 작업">
-              <input type="number" value={form.max_daily_tasks} onChange={e => setForm({ ...form, max_daily_tasks: Number(e.target.value) })} style={inputStyle} min={1} max={20} />
+            <FormField label="하루 최대 작업수">
+              <input type="number" min={1} max={20} value={createForm.max_daily_tasks} onChange={e => setCreateForm({ ...createForm, max_daily_tasks: parseInt(e.target.value) || 5 })} style={inputStyle} />
             </FormField>
             <FormField label="건당 단가 (원)">
-              <input type="number" value={form.per_task_rate} onChange={e => setForm({ ...form, per_task_rate: Number(e.target.value) })} style={inputStyle} min={0} />
+              <input type="number" min={0} value={createForm.per_task_rate} onChange={e => setCreateForm({ ...createForm, per_task_rate: parseInt(e.target.value) || 0 })} style={inputStyle} />
             </FormField>
           </div>
+          <FormField label="주민번호">
+            <input value={createForm.resident_number} onChange={e => setCreateForm({ ...createForm, resident_number: e.target.value })} style={inputStyle} placeholder="000000-0000000" />
+          </FormField>
           <FormField label="차량번호">
-            <input value={form.vehicle_number} onChange={e => setForm({ ...form, vehicle_number: e.target.value })} style={inputStyle} placeholder="12가 3456" />
+            <input value={createForm.vehicle_number} onChange={e => setCreateForm({ ...createForm, vehicle_number: e.target.value })} style={inputStyle} placeholder="예: 12가 3456" />
           </FormField>
-          <FormField label="메모">
-            <textarea value={form.memo} onChange={e => setForm({ ...form, memo: e.target.value })} style={{ ...inputStyle, height: 70, resize: 'vertical' }} placeholder="특이사항" />
+          <FormField label="비고">
+            <textarea value={createForm.memo} onChange={e => setCreateForm({ ...createForm, memo: e.target.value })} style={{ ...inputStyle, height: 70, resize: 'vertical' }} placeholder="특이사항" />
           </FormField>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />
-            <label htmlFor="is_active" style={{ fontSize: 13, cursor: 'pointer' }}>활성 직원</label>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button onClick={closeModal} style={cancelBtnStyle}>취소</button>
-            <button onClick={handleSave} disabled={saving || !form.name.trim()} style={saveBtnStyle(saving || !form.name.trim())}>
+            <button
+              onClick={handleCreate}
+              disabled={saving || !createForm.name.trim() || pwMismatch}
+              style={saveBtnStyle(saving || !createForm.name.trim() || pwMismatch)}
+            >
+              {saving ? '등록 중...' : '등록'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── 직원 수정 모달 ── */}
+      {modal === 'edit' && target && (
+        <Modal title={`직원 수정 — ${target.name}`} onClose={closeModal}>
+          {error && <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>{error}</div>}
+
+          <FormField label="이름 *">
+            <input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} style={inputStyle} placeholder="직원 이름" />
+          </FormField>
+          <FormField label="연락처">
+            <input type="tel" value={editForm.contact} onChange={e => setEditForm({ ...editForm, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
+          </FormField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <FormField label="하루 최대 작업수">
+              <input type="number" min={1} max={20} value={editForm.max_daily_tasks} onChange={e => setEditForm({ ...editForm, max_daily_tasks: parseInt(e.target.value) || 5 })} style={inputStyle} />
+            </FormField>
+            <FormField label="건당 단가 (원)">
+              <input type="number" min={0} value={editForm.per_task_rate} onChange={e => setEditForm({ ...editForm, per_task_rate: parseInt(e.target.value) || 0 })} style={inputStyle} />
+            </FormField>
+          </div>
+          <FormField label="주민번호">
+            <input value={editForm.resident_number} onChange={e => setEditForm({ ...editForm, resident_number: e.target.value })} style={inputStyle} placeholder="000000-0000000" />
+          </FormField>
+          <FormField label="차량번호">
+            <input value={editForm.vehicle_number} onChange={e => setEditForm({ ...editForm, vehicle_number: e.target.value })} style={inputStyle} placeholder="예: 12가 3456" />
+          </FormField>
+          <FormField label="비고">
+            <textarea value={editForm.memo} onChange={e => setEditForm({ ...editForm, memo: e.target.value })} style={{ ...inputStyle, height: 70, resize: 'vertical' }} placeholder="특이사항" />
+          </FormField>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+            <button onClick={closeModal} style={cancelBtnStyle}>취소</button>
+            <button onClick={handleEdit} disabled={saving || !editForm.name.trim()} style={saveBtnStyle(saving || !editForm.name.trim())}>
               {saving ? '저장 중...' : '저장'}
             </button>
           </div>
         </Modal>
       )}
 
-      {/* Password Modal */}
+      {/* ── 계정/비밀번호 모달 ── */}
       {modal === 'pw' && target && (
         <Modal title={`계정 관리 — ${target.name}`} onClose={closeModal}>
+          {error && <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>{error}</div>}
           {!target.username && (
             <FormField label="아이디">
               <input value={pwForm.username} onChange={e => setPwForm({ ...pwForm, username: e.target.value })} style={inputStyle} placeholder="로그인 아이디" />
@@ -203,7 +331,7 @@ export default function Employees() {
         </Modal>
       )}
 
-      {/* Delete Confirm */}
+      {/* ── 삭제 확인 ── */}
       {deleteId && (
         <Modal title="직원 삭제" onClose={() => setDeleteId(null)}>
           <p style={{ fontSize: 14, color: '#374151', marginBottom: 20 }}>이 직원을 삭제하시겠습니까?</p>
@@ -250,4 +378,4 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 
 const inputStyle: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }
 const cancelBtnStyle: React.CSSProperties = { padding: '9px 20px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', fontSize: 13, cursor: 'pointer', color: '#374151' }
-const saveBtnStyle = (disabled: boolean): React.CSSProperties => ({ padding: '9px 20px', border: 'none', borderRadius: 8, background: disabled ? '#9ca3af' : '#215288', fontSize: 13, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', color: '#fff' })
+const saveBtnStyle = (disabled: boolean): React.CSSProperties => ({ padding: '9px 20px', border: 'none', borderRadius: 8, background: disabled ? '#9ca3af' : BRAND, fontSize: 13, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', color: '#fff' })
