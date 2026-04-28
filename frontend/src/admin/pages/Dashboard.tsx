@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Dispatch, SetStateAction } from 'react'
 import * as XLSX from 'xlsx'
-import { dashboardApi, stationApi, employeeApi } from '../../services/api'
+import { dashboardApi, employeeApi } from '../../services/api'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -60,6 +60,14 @@ interface TaskListItem {
   scheduled_date: string
   status: string
 }
+interface SummaryStats {
+  totalEmployees: number
+  todayTotal: number
+  todayCompleted: number
+  todayIncomplete: number
+}
+
+type Tab = 'annual' | 'monthly' | 'daily'
 
 // ===== Constants =====
 const MONTH_LABELS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
@@ -296,8 +304,7 @@ function Card({ title, extra, children }: { title: string; extra?: React.ReactNo
 }
 
 // ===== Annual View =====
-function AnnualView() {
-  const [year, setYear] = useState(new Date().getFullYear())
+function AnnualView({ year, setYear }: { year: number; setYear: Dispatch<SetStateAction<number>> }) {
   const [data, setData] = useState<AnnualStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -425,10 +432,10 @@ function AnnualView() {
 }
 
 // ===== Monthly View =====
-function MonthlyView() {
-  const today = new Date()
-  const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth() + 1)
+function MonthlyView({ year, setYear, month, setMonth }: {
+  year: number; setYear: Dispatch<SetStateAction<number>>;
+  month: number; setMonth: Dispatch<SetStateAction<number>>
+}) {
   const [data, setData] = useState<MonthlyStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -580,11 +587,9 @@ function MonthlyView() {
 }
 
 // ===== Daily View =====
-function DailyView() {
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const now = new Date()
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  })
+function DailyView({ selectedDate, setSelectedDate }: {
+  selectedDate: string; setSelectedDate: Dispatch<SetStateAction<string>>
+}) {
   const [data, setData] = useState<DailyStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -733,30 +738,22 @@ function DailyView() {
 }
 
 // ===== Summary Cards (top of page) =====
-interface SummaryStats {
-  totalStations: number
-  totalEmployees: number
-  todayTotal: number
-  todayCompleted: number
-  todayIncomplete: number
-}
-
-function SummaryCards() {
+function SummaryCards({ activeTab, year, month, selectedDate }: {
+  activeTab: Tab; year: number; month: number; selectedDate: string
+}) {
   const [stats, setStats] = useState<SummaryStats | null>(null)
+  const [totalStations, setTotalStations] = useState<number | null>(null)
 
   useEffect(() => {
     const now = new Date()
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     Promise.all([
-      stationApi.list({ limit: 200 }),
       employeeApi.list(false),
       dashboardApi.daily(dateStr),
-    ]).then(([sRes, eRes, dRes]) => {
-      const stationList = sRes.data.stations ?? sRes.data ?? []
+    ]).then(([eRes, dRes]) => {
       const employeeList = Array.isArray(eRes.data) ? eRes.data : (eRes.data.employees ?? [])
       const daily: DailyStats = dRes.data
       setStats({
-        totalStations: Array.isArray(stationList) ? stationList.length : 0,
         totalEmployees: Array.isArray(employeeList) ? employeeList.length : 0,
         todayTotal: daily.summary.total,
         todayCompleted: daily.summary.completed,
@@ -765,8 +762,39 @@ function SummaryCards() {
     }).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    setTotalStations(null)
+    const fetchStations = async () => {
+      try {
+        let tasks: TaskListItem[]
+        if (activeTab === 'annual') {
+          const res = await dashboardApi.tasks({ year })
+          tasks = res.data
+        } else if (activeTab === 'monthly') {
+          const monthStr = `${year}-${String(month).padStart(2, '0')}`
+          const res = await dashboardApi.tasks({ month: monthStr })
+          tasks = res.data
+        } else {
+          const res = await dashboardApi.tasks({ date: selectedDate })
+          tasks = res.data
+        }
+        const names = new Set(tasks.map(t => t.station_name).filter((n): n is string => !!n))
+        setTotalStations(names.size)
+      } catch {
+        setTotalStations(0)
+      }
+    }
+    fetchStations()
+  }, [activeTab, year, month, selectedDate])
+
+  const stationLabel = activeTab === 'annual'
+    ? `${year}년 기지국`
+    : activeTab === 'monthly'
+    ? `${month}월 기지국`
+    : '당일 기지국'
+
   const cards = [
-    { label: '전체 기지국', value: stats?.totalStations ?? '-', icon: <Building2 size={22} color={BRAND} />, bg: '#eff6ff' },
+    { label: stationLabel, value: totalStations ?? '-', icon: <Building2 size={22} color={BRAND} />, bg: '#eff6ff' },
     { label: '직원 수', value: stats?.totalEmployees ?? '-', icon: <Users size={22} color="#7c3aed" />, bg: '#f5f3ff' },
     { label: '오늘 일정', value: stats?.todayTotal ?? '-', icon: <CalendarCheck size={22} color="#0891b2" />, bg: '#ecfeff' },
     { label: '오늘 완료', value: stats?.todayCompleted ?? '-', icon: <CheckCircle size={22} color="#16a34a" />, bg: '#f0fdf4' },
@@ -775,8 +803,8 @@ function SummaryCards() {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
-      {cards.map(c => (
-        <div key={c.label} style={{ background: '#fff', borderRadius: 12, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 14 }}>
+      {cards.map((c, i) => (
+        <div key={i} style={{ background: '#fff', borderRadius: 12, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ width: 48, height: 48, borderRadius: 12, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             {c.icon}
           </div>
@@ -791,7 +819,6 @@ function SummaryCards() {
 }
 
 // ===== Main =====
-type Tab = 'annual' | 'monthly' | 'daily'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'annual', label: '연간' },
   { id: 'monthly', label: '월간' },
@@ -800,12 +827,18 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('monthly')
+  const [year, setYear] = useState(new Date().getFullYear())
+  const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  })
 
   return (
     <div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <SummaryCards />
+      <SummaryCards activeTab={activeTab} year={year} month={month} selectedDate={selectedDate} />
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', gap: 4, padding: '12px 16px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb' }}>
@@ -831,9 +864,9 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{ padding: 24 }}>
-          {activeTab === 'annual' && <AnnualView />}
-          {activeTab === 'monthly' && <MonthlyView />}
-          {activeTab === 'daily' && <DailyView />}
+          {activeTab === 'annual' && <AnnualView year={year} setYear={setYear} />}
+          {activeTab === 'monthly' && <MonthlyView year={year} setYear={setYear} month={month} setMonth={setMonth} />}
+          {activeTab === 'daily' && <DailyView selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
         </div>
       </div>
     </div>
