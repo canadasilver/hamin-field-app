@@ -93,16 +93,17 @@ export default function Employees() {
   const handleCreate = async () => {
     setError('')
     const f = createForm
-    if (!f.name.trim() || !f.contact.trim()) { setError('이름과 연락처를 입력하세요.'); return }
+    if (f.type === 'employee' && (!f.name.trim() || !f.contact.trim())) { setError('이름과 연락처를 입력하세요.'); return }
+    if (f.type === 'contractor' && !f.company_name.trim()) { setError('업체명을 입력하세요.'); return }
     if (!f.username.trim()) { setError('아이디를 입력하세요.'); return }
     if (!f.password) { setError('비밀번호를 입력하세요.'); return }
-    if (f.password !== f.confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return }
+    if (f.type === 'employee' && f.password !== f.confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return }
 
     setSaving(true)
     try {
       await employeeApi.create({
-        name: f.name.trim(),
-        contact: f.contact.trim(),
+        name: f.type === 'contractor' ? f.company_name.trim() : f.name.trim(),
+        contact: f.type === 'contractor' ? '-' : f.contact.trim(),
         type: f.type,
         company_name: f.type === 'contractor' ? f.company_name.trim() || null : null,
         username: f.username.trim(),
@@ -252,68 +253,77 @@ export default function Employees() {
         <Modal title="새 직원 등록" onClose={closeModal}>
           {error && <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>{error}</div>}
 
-          <FormField label="이름 *">
-            <input value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })} style={inputStyle} placeholder="직원 이름" />
-          </FormField>
-          <FormField label="연락처">
-            <input type="tel" value={createForm.contact} onChange={e => setCreateForm({ ...createForm, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
-          </FormField>
           <FormField label="구분">
             <select
               value={createForm.type}
-              onChange={e => setCreateForm({ ...createForm, type: e.target.value as 'employee' | 'contractor', company_name: '' })}
+              onChange={e => setCreateForm({ ...EMPTY_CREATE, type: e.target.value as 'employee' | 'contractor' })}
               style={inputStyle}
             >
               <option value="employee">직원</option>
               <option value="contractor">하청업체</option>
             </select>
           </FormField>
-          {createForm.type === 'contractor' && (
-            <FormField label="업체명">
+
+          {createForm.type === 'employee' ? (
+            <>
+              <FormField label="이름 *">
+                <input value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })} style={inputStyle} placeholder="직원 이름" />
+              </FormField>
+              <FormField label="연락처">
+                <input type="tel" value={createForm.contact} onChange={e => setCreateForm({ ...createForm, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
+              </FormField>
+            </>
+          ) : (
+            <FormField label="업체명 *">
               <input value={createForm.company_name} onChange={e => setCreateForm({ ...createForm, company_name: e.target.value })} style={inputStyle} placeholder="하청업체명" />
             </FormField>
           )}
+
           <FormField label="아이디 *">
             <input value={createForm.username} onChange={e => setCreateForm({ ...createForm, username: e.target.value })} style={inputStyle} placeholder="로그인에 사용할 아이디" autoComplete="off" />
           </FormField>
           <FormField label="비밀번호 *">
             <input type="password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} style={inputStyle} placeholder="비밀번호" autoComplete="new-password" />
           </FormField>
-          <FormField label="비밀번호 확인 *">
-            <input
-              type="password"
-              value={createForm.confirmPassword}
-              onChange={e => setCreateForm({ ...createForm, confirmPassword: e.target.value })}
-              style={{ ...inputStyle, borderColor: pwMismatch ? '#ef4444' : '#e5e7eb' }}
-              placeholder="비밀번호 재입력"
-              autoComplete="new-password"
-            />
-            {pwMismatch && <p style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>비밀번호가 일치하지 않습니다.</p>}
-          </FormField>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <FormField label="하루 최대 작업수">
-              <input type="number" min={1} max={20} value={createForm.max_daily_tasks} onChange={e => setCreateForm({ ...createForm, max_daily_tasks: parseInt(e.target.value) || 5 })} style={inputStyle} />
-            </FormField>
-            <FormField label="건당 단가 (원)">
-              <input type="number" min={0} value={createForm.per_task_rate} onChange={e => setCreateForm({ ...createForm, per_task_rate: parseInt(e.target.value) || 0 })} style={inputStyle} />
-            </FormField>
-          </div>
-          <FormField label="주민번호">
-            <input value={createForm.resident_number} onChange={e => setCreateForm({ ...createForm, resident_number: e.target.value })} style={inputStyle} placeholder="000000-0000000" />
-          </FormField>
-          <FormField label="차량번호">
-            <input value={createForm.vehicle_number} onChange={e => setCreateForm({ ...createForm, vehicle_number: e.target.value })} style={inputStyle} placeholder="예: 12가 3456" />
-          </FormField>
-          <FormField label="비고">
-            <textarea value={createForm.memo} onChange={e => setCreateForm({ ...createForm, memo: e.target.value })} style={{ ...inputStyle, height: 70, resize: 'vertical' }} placeholder="특이사항" />
-          </FormField>
+          {createForm.type === 'employee' && (
+            <>
+              <FormField label="비밀번호 확인 *">
+                <input
+                  type="password"
+                  value={createForm.confirmPassword}
+                  onChange={e => setCreateForm({ ...createForm, confirmPassword: e.target.value })}
+                  style={{ ...inputStyle, borderColor: pwMismatch ? '#ef4444' : '#e5e7eb' }}
+                  placeholder="비밀번호 재입력"
+                  autoComplete="new-password"
+                />
+                {pwMismatch && <p style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>비밀번호가 일치하지 않습니다.</p>}
+              </FormField>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormField label="하루 최대 작업수">
+                  <input type="number" min={1} max={20} value={createForm.max_daily_tasks} onChange={e => setCreateForm({ ...createForm, max_daily_tasks: parseInt(e.target.value) || 5 })} style={inputStyle} />
+                </FormField>
+                <FormField label="건당 단가 (원)">
+                  <input type="number" min={0} value={createForm.per_task_rate} onChange={e => setCreateForm({ ...createForm, per_task_rate: parseInt(e.target.value) || 0 })} style={inputStyle} />
+                </FormField>
+              </div>
+              <FormField label="주민번호">
+                <input value={createForm.resident_number} onChange={e => setCreateForm({ ...createForm, resident_number: e.target.value })} style={inputStyle} placeholder="000000-0000000" />
+              </FormField>
+              <FormField label="차량번호">
+                <input value={createForm.vehicle_number} onChange={e => setCreateForm({ ...createForm, vehicle_number: e.target.value })} style={inputStyle} placeholder="예: 12가 3456" />
+              </FormField>
+              <FormField label="비고">
+                <textarea value={createForm.memo} onChange={e => setCreateForm({ ...createForm, memo: e.target.value })} style={{ ...inputStyle, height: 70, resize: 'vertical' }} placeholder="특이사항" />
+              </FormField>
+            </>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button onClick={closeModal} style={cancelBtnStyle}>취소</button>
             <button
               onClick={handleCreate}
-              disabled={saving || !createForm.name.trim() || pwMismatch}
-              style={saveBtnStyle(saving || !createForm.name.trim() || pwMismatch)}
+              disabled={saving || (createForm.type === 'employee' ? !createForm.name.trim() || pwMismatch : !createForm.company_name.trim())}
+              style={saveBtnStyle(saving || (createForm.type === 'employee' ? !createForm.name.trim() || pwMismatch : !createForm.company_name.trim()))}
             >
               {saving ? '등록 중...' : '등록'}
             </button>
