@@ -9,6 +9,8 @@ const BRAND = '#215288'
 interface CreateForm {
   name: string
   contact: string
+  type: 'employee' | 'contractor'
+  company_name: string
   username: string
   password: string
   confirmPassword: string
@@ -20,7 +22,7 @@ interface CreateForm {
 }
 
 const EMPTY_CREATE: CreateForm = {
-  name: '', contact: '', username: '', password: '', confirmPassword: '',
+  name: '', contact: '', type: 'employee', company_name: '', username: '', password: '', confirmPassword: '',
   max_daily_tasks: 5, per_task_rate: 0,
   resident_number: '', vehicle_number: '', memo: '',
 }
@@ -29,6 +31,8 @@ const EMPTY_CREATE: CreateForm = {
 interface EditForm {
   name: string
   contact: string
+  type: 'employee' | 'contractor'
+  company_name: string
   max_daily_tasks: number
   per_task_rate: number
   resident_number: string
@@ -45,7 +49,7 @@ export default function Employees() {
   const [modal, setModal] = useState<'add' | 'edit' | 'pw' | null>(null)
   const [target, setTarget] = useState<Employee | null>(null)
   const [createForm, setCreateForm] = useState<CreateForm>(EMPTY_CREATE)
-  const [editForm, setEditForm] = useState<EditForm>({ name: '', contact: '', max_daily_tasks: 5, per_task_rate: 0, resident_number: '', vehicle_number: '', memo: '' })
+  const [editForm, setEditForm] = useState<EditForm>({ name: '', contact: '', type: 'employee', company_name: '', max_daily_tasks: 5, per_task_rate: 0, resident_number: '', vehicle_number: '', memo: '' })
   const [pwForm, setPwForm] = useState<PwForm>({ username: '', password: '' })
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -68,7 +72,17 @@ export default function Employees() {
 
   const openAdd = () => { setCreateForm(EMPTY_CREATE); setModal('add') }
   const openEdit = (e: Employee) => {
-    setEditForm({ name: e.name, contact: e.contact, max_daily_tasks: e.max_daily_tasks, per_task_rate: e.per_task_rate, resident_number: e.resident_number ?? '', vehicle_number: e.vehicle_number ?? '', memo: e.memo ?? '' })
+    setEditForm({
+      name: e.name,
+      contact: e.contact,
+      type: e.type ?? 'employee',
+      company_name: e.company_name ?? '',
+      max_daily_tasks: e.max_daily_tasks,
+      per_task_rate: e.per_task_rate,
+      resident_number: e.resident_number ?? '',
+      vehicle_number: e.vehicle_number ?? '',
+      memo: e.memo ?? '',
+    })
     setTarget(e)
     setModal('edit')
   }
@@ -89,6 +103,8 @@ export default function Employees() {
       await employeeApi.create({
         name: f.name.trim(),
         contact: f.contact.trim(),
+        type: f.type,
+        company_name: f.type === 'contractor' ? f.company_name.trim() || null : null,
         username: f.username.trim(),
         password: f.password,
         max_daily_tasks: Number(f.max_daily_tasks) || 5,
@@ -115,6 +131,8 @@ export default function Employees() {
       await employeeApi.update(target.id, {
         name: editForm.name.trim(),
         contact: editForm.contact.trim(),
+        type: editForm.type,
+        company_name: editForm.type === 'contractor' ? editForm.company_name.trim() || null : null,
         max_daily_tasks: Number(editForm.max_daily_tasks) || 5,
         per_task_rate: Number(editForm.per_task_rate) || 0,
         resident_number: editForm.resident_number.trim() || null,
@@ -177,17 +195,33 @@ export default function Employees() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#f9fafb' }}>
-                  {['이름', '연락처', '아이디', '하루최대', '단가', '차량번호', '상태', ''].map(h => (
+                  {['이름', '구분', '연락처', '아이디', '하루최대', '단가', '차량번호', '상태', ''].map(h => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {employees.length === 0 ? (
-                  <tr><td colSpan={8} style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>직원이 없습니다.</td></tr>
+                  <tr><td colSpan={9} style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>직원이 없습니다.</td></tr>
                 ) : employees.map(e => (
                   <tr key={e.id} style={{ borderBottom: '1px solid #f9fafb' }}>
                     <td style={{ padding: '10px 14px', fontWeight: 500 }}>{e.name}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: 99,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: e.type === 'contractor' ? '#1d4ed8' : '#065f46',
+                        background: e.type === 'contractor' ? '#dbeafe' : '#d1fae5',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {e.type === 'contractor' ? '하청업체' : '직원'}
+                      </span>
+                      {e.type === 'contractor' && e.company_name && (
+                        <div style={{ marginTop: 4, color: '#6b7280', fontSize: 11, whiteSpace: 'nowrap' }}>{e.company_name}</div>
+                      )}
+                    </td>
                     <td style={{ padding: '10px 14px', color: '#6b7280' }}>{e.contact}</td>
                     <td style={{ padding: '10px 14px', color: '#6b7280' }}>{e.username ?? <span style={{ color: '#d1d5db' }}>미설정</span>}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>{e.max_daily_tasks}건</td>
@@ -224,6 +258,21 @@ export default function Employees() {
           <FormField label="연락처">
             <input type="tel" value={createForm.contact} onChange={e => setCreateForm({ ...createForm, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
           </FormField>
+          <FormField label="구분">
+            <select
+              value={createForm.type}
+              onChange={e => setCreateForm({ ...createForm, type: e.target.value as 'employee' | 'contractor', company_name: '' })}
+              style={inputStyle}
+            >
+              <option value="employee">직원</option>
+              <option value="contractor">하청업체</option>
+            </select>
+          </FormField>
+          {createForm.type === 'contractor' && (
+            <FormField label="업체명">
+              <input value={createForm.company_name} onChange={e => setCreateForm({ ...createForm, company_name: e.target.value })} style={inputStyle} placeholder="하청업체명" />
+            </FormField>
+          )}
           <FormField label="아이디 *">
             <input value={createForm.username} onChange={e => setCreateForm({ ...createForm, username: e.target.value })} style={inputStyle} placeholder="로그인에 사용할 아이디" autoComplete="off" />
           </FormField>
@@ -283,6 +332,21 @@ export default function Employees() {
           <FormField label="연락처">
             <input type="tel" value={editForm.contact} onChange={e => setEditForm({ ...editForm, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
           </FormField>
+          <FormField label="구분">
+            <select
+              value={editForm.type}
+              onChange={e => setEditForm({ ...editForm, type: e.target.value as 'employee' | 'contractor', company_name: '' })}
+              style={inputStyle}
+            >
+              <option value="employee">직원</option>
+              <option value="contractor">하청업체</option>
+            </select>
+          </FormField>
+          {editForm.type === 'contractor' && (
+            <FormField label="업체명">
+              <input value={editForm.company_name} onChange={e => setEditForm({ ...editForm, company_name: e.target.value })} style={inputStyle} placeholder="하청업체명" />
+            </FormField>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <FormField label="하루 최대 작업수">
               <input type="number" min={1} max={20} value={editForm.max_daily_tasks} onChange={e => setEditForm({ ...editForm, max_daily_tasks: parseInt(e.target.value) || 5 })} style={inputStyle} />

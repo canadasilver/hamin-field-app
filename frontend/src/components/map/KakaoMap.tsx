@@ -65,7 +65,7 @@ export default function KakaoMap({ markers, showRoute = false, onMarkerClick, cl
 
       const markerColor = m.status === 'completed' ? '#22c55e'
         : m.status === 'in_progress' ? '#eab308'
-        : '#E4002B'
+        : '#215288'
 
       const content = `
         <div style="
@@ -103,7 +103,7 @@ export default function KakaoMap({ markers, showRoute = false, onMarkerClick, cl
       const polyline = new kakao.maps.Polyline({
         path,
         strokeWeight: 4,
-        strokeColor: '#E4002B',
+        strokeColor: '#215288',
         strokeOpacity: 0.8,
         strokeStyle: 'solid',
       })

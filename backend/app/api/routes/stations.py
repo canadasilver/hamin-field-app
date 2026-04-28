@@ -74,6 +74,33 @@ HEADER_INDICATOR_COLS = {"NO", "고유번호", "국소ID"}
 # 시트 우선순위
 PREFERRED_SHEETS = ["작업명단", "국소별결과", "냉방기", "검증대상"]
 
+REGION_KEYWORDS: list[tuple[list[str], str, str]] = [
+    (["서울특별시", "서울"], "north", "서울"),
+    (["인천광역시", "인천"], "north", "인천"),
+    (["경기도", "경기"], "north", "경기"),
+    (["강원특별자치도", "강원도", "강원"], "north", "강원"),
+    (["대전광역시", "대전"], "south", "대전"),
+    (["세종특별자치시", "세종"], "south", "세종"),
+    (["충청남도", "충남"], "south", "충남"),
+    (["충청북도", "충북"], "south", "충북"),
+    (["전북특별자치도", "전라북도", "전북"], "south", "전북"),
+    (["전라남도", "전남"], "south", "전남"),
+    (["광주광역시", "광주"], "south", "광주"),
+    (["경상북도", "경북"], "south", "경북"),
+    (["경상남도", "경남"], "south", "경남"),
+    (["대구광역시", "대구"], "south", "대구"),
+    (["부산광역시", "부산"], "south", "부산"),
+    (["울산광역시", "울산"], "south", "울산"),
+    (["제주특별자치도", "제주"], "south", "제주"),
+]
+
+
+def _region_from_address(address: str) -> tuple[str | None, str | None]:
+    for keywords, zone, detail in REGION_KEYWORDS:
+        if any(keyword in address for keyword in keywords):
+            return zone, detail
+    return None, None
+
 
 def _is_header_row(columns) -> str | None:
     """컬럼 목록이 데이터 헤더인지 판별. 국소명 컬럼명을 반환하거나 None."""
@@ -195,6 +222,12 @@ def _parse_row(row, cols: set) -> dict | None:
         data["address"] = " ".join(addr_parts)
     elif "주소" in cols:
         data["address"] = _safe_str(row.get("주소"))
+
+    if data.get("address"):
+        region_zone, region_detail = _region_from_address(data["address"])
+        if region_zone and region_detail:
+            data["region_zone"] = region_zone
+            data["region_detail"] = region_detail
 
     # 추가 컬럼 매핑
     simple_map = {

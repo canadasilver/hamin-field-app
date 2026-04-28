@@ -223,7 +223,7 @@ async def get_assignment_status():
     # 모든 스케줄 조회 (stations + employees 정보 포함)
     schedules_result = (
         db.table("schedules")
-        .select("*, stations(id, station_name, address, lat, lng, status, file_id), employees(id, name)")
+        .select("*, stations(id, station_name, address, lat, lng, status, file_id, region_zone, region_detail), employees(id, name)")
         .in_("status", ["pending", "in_progress"])
         .order("sort_order")
         .execute()
@@ -241,7 +241,7 @@ async def get_assignment_status():
         file_map = {}
 
     COLORS = [
-        "#E4002B", "#3B82F6", "#22C55E", "#F59E0B",
+        "#215288", "#3B82F6", "#22C55E", "#F59E0B",
         "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16",
         "#F97316", "#14B8A6", "#6366F1", "#EF4444",
     ]
@@ -285,6 +285,8 @@ async def get_assignment_status():
             "address": station_data.get("address", ""),
             "lat": station_data.get("lat"),
             "lng": station_data.get("lng"),
+            "region_zone": station_data.get("region_zone"),
+            "region_detail": station_data.get("region_detail"),
             "scheduled_date": s["scheduled_date"],
             "sort_order": s.get("sort_order", 0),
             "file_id": file_id,

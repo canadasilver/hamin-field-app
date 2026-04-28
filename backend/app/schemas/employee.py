@@ -11,6 +11,8 @@ class EmployeeBase(BaseModel):
     resident_number: str | None = None
     vehicle_number: str | None = None
     memo: str | None = None
+    type: str = 'employee'
+    company_name: str | None = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -27,6 +29,8 @@ class EmployeeUpdate(BaseModel):
     resident_number: str | None = None
     vehicle_number: str | None = None
     memo: str | None = None
+    type: str | None = None
+    company_name: str | None = None
 
 
 class EmployeeResponse(EmployeeBase):

@@ -4,6 +4,7 @@ import type { Employee, AssignmentPreview, AssignmentStation, UploadedFile, Stat
 import { Shuffle, Loader2, ChevronDown, AlertTriangle, Trash2, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
+import { getRegionFromAddress, NORTH_REGIONS, SOUTH_REGIONS } from '../../utils/regionUtils'
 
 declare global {
   interface Window { kakao: any }
@@ -54,6 +55,13 @@ export default function Assign() {
   const [confirming, setConfirming] = useState(false)
   const [selectedTabEmpId, setSelectedTabEmpId] = useState<string>('')
 
+  // ===== 지역별 배분 상태 =====
+  const [selectedZones, setSelectedZones] = useState<('north' | 'south')[]>([])
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([])
+  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null)
+  const [assignedRegions, setAssignedRegions] = useState<Record<string, string>>({})
+  const [regionLoading, setRegionLoading] = useState(false)
+
   useEffect(() => {
     const today = new Date()
     const twoWeeks = new Date(today)
@@ -77,6 +85,7 @@ export default function Assign() {
       if (statusRes.data.has_assignments) {
         setStatusData(statusRes.data)
         setFileGroups(statusRes.data.file_groups || [])
+        setAssignedRegions(buildAssignedRegionMap(statusRes.data.assignments || []))
       }
     } catch {
       toast.error('초기 데이터 로드 실패')
@@ -232,6 +241,128 @@ export default function Assign() {
     return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b))
   }
 
+  // ===== 지역별 배분 핸들러 =====
+  const toggleZone = (zone: 'north' | 'south') => {
+    setSelectedZones(prev =>
+      prev.includes(zone) ? prev.filter(z => z !== zone) : [...prev, zone]
+    )
+    setSelectedRegions([])
+  }
+
+  const toggleRegion = (region: string) => {
+    setSelectedRegions(prev =>
+      prev.includes(region) ? prev.filter(r => r !== region) : [...prev, region]
+    )
+  }
+
+  const regionsToShow = [
+    ...(selectedZones.includes('north') ? [...NORTH_REGIONS] : []),
+    ...(selectedZones.includes('south') ? [...SOUTH_REGIONS] : []),
+  ]
+
+  const selectedRegionConflicts = selectedRegions.filter(region => assignedRegions[region])
+
+  const buildStationRegion = (station: Station) => {
+    if (station.region_detail) return station.region_detail
+    return getRegionFromAddress(station.address || '').detail
+  }
+
+  const buildAssignedRegionMap = (assignments: any[]) => {
+    const map: Record<string, string> = {}
+    assignments.forEach(group => {
+      ;(group.stations || []).forEach((station: { address?: string; region_detail?: string }) => {
+        const region = station.region_detail || getRegionFromAddress(station.address || '').detail
+        if (region && !map[region]) {
+          map[region] = group.employee_name || '담당자'
+        }
+      })
+    })
+    return map
+  }
+
+  const getWorkdays = (start: string, end: string) => {
+    const days: string[] = []
+    const [startY, startM, startD] = start.split('-').map(Number)
+    const [endY, endM, endD] = end.split('-').map(Number)
+    const current = new Date(startY, startM - 1, startD)
+    const last = new Date(endY, endM - 1, endD)
+
+    while (current <= last) {
+      const day = current.getDay()
+      if (day !== 0 && day !== 6) {
+        days.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`)
+      }
+      current.setDate(current.getDate() + 1)
+    }
+    return days
+  }
+
+  const handleRegionAssign = async () => {
+    if (selectedRegions.length === 0) return toast.error('지역을 선택해주세요')
+    if (!selectedAssignee) return toast.error('담당자를 선택해주세요')
+    if (!startDate || !endDate) return toast.error('작업 기간을 설정해주세요')
+
+    const conflicts = selectedRegionConflicts
+    if (conflicts.length > 0) {
+      return toast.error(`이미 배분된 지역: ${conflicts.map(r => `${r}(${assignedRegions[r]})`).join(', ')}`)
+    }
+
+    setRegionLoading(true)
+    try {
+      const res = await stationApi.list({ limit: 1000, ...(selectedFileId && { file_id: selectedFileId }) })
+      const allStations: Station[] = res.data.stations ?? res.data ?? []
+
+      const filtered = allStations.filter(s =>
+        s.status === 'pending' && selectedRegions.includes(buildStationRegion(s) || '')
+      )
+
+      if (filtered.length === 0) {
+        toast.error('선택한 지역에 배분 가능한 기지국이 없습니다. 기지국의 지역 정보가 설정되지 않았을 수 있습니다.')
+        return
+      }
+
+      const assignee = employees.find(e => e.id === selectedAssignee)
+      const maxDaily = assignee?.max_daily_tasks ?? 5
+      const workdays = getWorkdays(startDate, endDate)
+      const capacity = workdays.length * maxDaily
+
+      if (workdays.length === 0) {
+        toast.error('선택한 기간에 배분 가능한 평일이 없습니다.')
+        return
+      }
+
+      if (filtered.length > capacity) {
+        toast.error(`선택 기간의 최대 배분 가능 건수(${capacity}건)를 초과했습니다.`)
+        return
+      }
+
+      const items = filtered.map((station, idx) => {
+        const dayIdx = Math.floor(idx / maxDaily)
+        return {
+          station_id: station.id,
+          employee_id: selectedAssignee!,
+          scheduled_date: workdays[dayIdx],
+          sort_order: (idx % maxDaily) + 1,
+        }
+      })
+
+      await assignmentApi.confirm(items)
+
+      const newAssigned = { ...assignedRegions }
+      selectedRegions.forEach(r => { newAssigned[r] = assignee?.name ?? '담당자' })
+      setAssignedRegions(newAssigned)
+      setSelectedRegions([])
+      setSelectedZones([])
+      setSelectedAssignee(null)
+      toast.success(`${filtered.length}건 지역 배분 완료`)
+      loadInitial()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || '배분 실패')
+    } finally {
+      setRegionLoading(false)
+    }
+  }
+
   if (initialLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
@@ -244,115 +375,261 @@ export default function Assign() {
   if (mode === 'setup') {
     const assignedFileIds = new Set(fileGroups.map(fg => fg.file_id))
     const availableFiles = files.filter(f => !assignedFileIds.has(f.id))
+    const personnelEmployees = employees.filter(e => !e.type || e.type === 'employee')
+    const personnelContractors = employees.filter(e => e.type === 'contractor')
 
     return (
-      <div style={{ display: 'flex', gap: 24, minHeight: 'calc(100vh - 80px)' }}>
-        {/* 좌측 설정 패널 */}
-        <div style={{ flex: '0 0 320px', background: '#fff', borderRight: '1px solid #e5e7eb', padding: 20, overflowY: 'auto' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: '#111827' }}>배분 설정</h2>
+      <div>
+        {/* ===== 지역별 배분 섹션 ===== */}
+        <div style={{ background: '#fff', borderRadius: 12, padding: 20, marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#111827', margin: '0 0 16px' }}>지역별 배분</h3>
 
-          {/* 파일 선택 */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 8, color: '#6b7280' }}>업로드 파일 선택</label>
-            <select
-              value={selectedFileId}
-              onChange={e => setSelectedFileId(e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: `1px solid #e5e7eb`, fontSize: 13 }}
-            >
-              <option value="">전체 미배분 기지국</option>
-              {(statusData ? availableFiles : files).map(f => (
-                <option key={f.id} value={f.id}>{f.filename} ({f.total_count}개)</option>
+          {/* 권역 선택 */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>권역 선택</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['north', 'south'] as const).map(zone => (
+                <button
+                  key={zone}
+                  onClick={() => toggleZone(zone)}
+                  style={{
+                    padding: '7px 24px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    background: selectedZones.includes(zone) ? BRAND : '#f3f4f6',
+                    color: selectedZones.includes(zone) ? '#fff' : '#6b7280',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {zone === 'north' ? '북부' : '남부'}
+                </button>
               ))}
-              {statusData && files.filter(f => !availableFiles.includes(f)).map(f => (
-                <option key={f.id} value={f.id} disabled>{f.filename} ({f.total_count}개) - 배분완료</option>
-              ))}
-            </select>
-          </div>
-
-          {/* 날짜 선택 */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 8, color: '#6b7280' }}>작업 기간</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid #e5e7eb`, fontSize: 13 }} />
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid #e5e7eb`, fontSize: 13 }} />
             </div>
           </div>
 
-          {/* 직원 선택 */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}>직원 선택</label>
-              <button onClick={selectAllEmployees} style={{ fontSize: 11, color: BRAND, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                {selectedEmpIds.length === employees.length ? '전체 해제' : '전체 선택'}
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
-              {employees.map(emp => {
-                const existing = existingCounts[emp.id] || 0
-                return (
-                  <label
-                    key={emp.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderRadius: 6,
-                      border: `1px solid ${selectedEmpIds.includes(emp.id) ? BRAND : '#e5e7eb'}`,
-                      background: selectedEmpIds.includes(emp.id) ? '#eff6ff' : '#fff',
-                      cursor: 'pointer', fontSize: 13
-                    }}
-                  >
-                    <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleEmployee(emp.id)} style={{ cursor: 'pointer' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>{emp.name}</div>
-                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{emp.contact}</div>
-                    </div>
-                    {existing > 0 && (
-                      <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <AlertTriangle size={10} /> {existing}건
-                      </span>
-                    )}
-                  </label>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 자동 배분 버튼 */}
-          <button
-            onClick={handlePreview}
-            disabled={loading || selectedEmpIds.length === 0}
-            style={{
-              width: '100%', padding: 12, borderRadius: 6, background: loading ? '#d1d5db' : BRAND, color: '#fff',
-              border: 'none', cursor: loading ? 'default' : 'pointer', fontWeight: 600, fontSize: 14,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
-            }}
-          >
-            {loading ? (
-              <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> {loadingMsg || '처리 중...'}</>
-            ) : (
-              <><Shuffle size={16} /> 자동 배분</>
-            )}
-          </button>
-
-          {/* 배분 현황 */}
-          {statusData && fileGroups.length > 0 && (
-            <div style={{ marginTop: 20, padding: 12, background: '#f3f4f6', borderRadius: 6 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: '#111827' }}>기존 배분 현황</p>
-              <div style={{ fontSize: 11, color: '#6b7280' }}>
-                {fileGroups.map(fg => (
-                  <div key={fg.file_id} style={{ marginBottom: 4 }}>
-                    {fg.filename}: {fg.total}건
-                  </div>
-                ))}
+          {/* 도/시 선택 */}
+          {selectedZones.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>지역 선택</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {regionsToShow.map(region => {
+                  const assignedTo = assignedRegions[region]
+                  const isSelected = selectedRegions.includes(region)
+                  return (
+                    <button
+                      key={region}
+                      onClick={() => !assignedTo && toggleRegion(region)}
+                      disabled={!!assignedTo}
+                      style={{
+                        padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                        cursor: assignedTo ? 'not-allowed' : 'pointer',
+                        border: `1px solid ${assignedTo ? '#e5e7eb' : isSelected ? BRAND : '#e5e7eb'}`,
+                        background: assignedTo ? '#f9fafb' : isSelected ? '#eff6ff' : '#fff',
+                        color: assignedTo ? '#9ca3af' : isSelected ? BRAND : '#374151',
+                        opacity: assignedTo ? 0.7 : 1,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {region}{assignedTo ? ` (${assignedTo})` : ''}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
+
+          {/* 선택된 지역 표시 */}
+          {selectedRegions.length > 0 && (
+            <div style={{ marginBottom: 14, fontSize: 13, color: '#374151' }}>
+              선택된 지역: <strong style={{ color: BRAND }}>{selectedRegions.join(', ')}</strong>
+            </div>
+          )}
+
+          {/* 담당자 선택 */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>담당자 선택</div>
+
+            {personnelEmployees.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>직원</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {personnelEmployees.map(emp => (
+                    <button
+                      key={emp.id}
+                      onClick={() => selectedRegionConflicts.length === 0 && setSelectedAssignee(selectedAssignee === emp.id ? null : emp.id)}
+                      disabled={selectedRegionConflicts.length > 0}
+                      style={{
+                        padding: '5px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                        cursor: selectedRegionConflicts.length > 0 ? 'not-allowed' : 'pointer',
+                        border: `1px solid ${selectedAssignee === emp.id ? BRAND : '#e5e7eb'}`,
+                        background: selectedRegionConflicts.length > 0 ? '#f9fafb' : selectedAssignee === emp.id ? '#eff6ff' : '#fff',
+                        color: selectedRegionConflicts.length > 0 ? '#9ca3af' : selectedAssignee === emp.id ? BRAND : '#374151',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {emp.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {personnelContractors.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>하청업체</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {personnelContractors.map(emp => (
+                    <button
+                      key={emp.id}
+                      onClick={() => selectedRegionConflicts.length === 0 && setSelectedAssignee(selectedAssignee === emp.id ? null : emp.id)}
+                      disabled={selectedRegionConflicts.length > 0}
+                      style={{
+                        padding: '5px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                        cursor: selectedRegionConflicts.length > 0 ? 'not-allowed' : 'pointer',
+                        border: `1px solid ${selectedAssignee === emp.id ? BRAND : '#e5e7eb'}`,
+                        background: selectedRegionConflicts.length > 0 ? '#f9fafb' : selectedAssignee === emp.id ? '#eff6ff' : '#fff',
+                        color: selectedRegionConflicts.length > 0 ? '#9ca3af' : selectedAssignee === emp.id ? BRAND : '#374151',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {emp.name}{emp.company_name ? ` (${emp.company_name})` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 배분 확정 버튼 */}
+          <button
+            onClick={handleRegionAssign}
+            disabled={regionLoading || selectedRegions.length === 0 || !selectedAssignee}
+            style={{
+              padding: '10px 24px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
+              cursor: regionLoading || selectedRegions.length === 0 || !selectedAssignee ? 'not-allowed' : 'pointer',
+              background: regionLoading || selectedRegions.length === 0 || !selectedAssignee ? '#d1d5db' : BRAND,
+              color: '#fff', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.15s',
+            }}
+          >
+            {regionLoading
+              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> 배분 중...</>
+              : '배분 확정'
+            }
+          </button>
         </div>
 
-        {/* 우측 배분 안내 */}
-        <div style={{ flex: 1, padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 14 }}>
-          <div style={{ textAlign: 'center' }}>
-            <Shuffle size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
-            <p>설정 후 "자동 배분" 버튼을 클릭하여</p>
-            <p>배분 결과를 미리보고 확정합니다.</p>
+        {/* ===== 기존 자동 배분 섹션 ===== */}
+        <div style={{ display: 'flex', gap: 24, minHeight: 'calc(100vh - 360px)' }}>
+          {/* 좌측 설정 패널 */}
+          <div style={{ flex: '0 0 320px', background: '#fff', borderRight: '1px solid #e5e7eb', padding: 20, overflowY: 'auto' }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: '#111827' }}>자동 배분 설정</h2>
+
+            {/* 파일 선택 */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 8, color: '#6b7280' }}>업로드 파일 선택</label>
+              <select
+                value={selectedFileId}
+                onChange={e => setSelectedFileId(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: `1px solid #e5e7eb`, fontSize: 13 }}
+              >
+                <option value="">전체 미배분 기지국</option>
+                {(statusData ? availableFiles : files).map(f => (
+                  <option key={f.id} value={f.id}>{f.filename} ({f.total_count}개)</option>
+                ))}
+                {statusData && files.filter(f => !availableFiles.includes(f)).map(f => (
+                  <option key={f.id} value={f.id} disabled>{f.filename} ({f.total_count}개) - 배분완료</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 날짜 선택 */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 8, color: '#6b7280' }}>작업 기간</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid #e5e7eb`, fontSize: 13 }} />
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid #e5e7eb`, fontSize: 13 }} />
+              </div>
+            </div>
+
+            {/* 직원 선택 */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}>직원 선택</label>
+                <button onClick={selectAllEmployees} style={{ fontSize: 11, color: BRAND, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                  {selectedEmpIds.length === employees.length ? '전체 해제' : '전체 선택'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
+                {employees.map(emp => {
+                  const existing = existingCounts[emp.id] || 0
+                  return (
+                    <label
+                      key={emp.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderRadius: 6,
+                        border: `1px solid ${selectedEmpIds.includes(emp.id) ? BRAND : '#e5e7eb'}`,
+                        background: selectedEmpIds.includes(emp.id) ? '#eff6ff' : '#fff',
+                        cursor: 'pointer', fontSize: 13
+                      }}
+                    >
+                      <input type="checkbox" checked={selectedEmpIds.includes(emp.id)} onChange={() => toggleEmployee(emp.id)} style={{ cursor: 'pointer' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: '#111827' }}>
+                          {emp.name}
+                          {emp.type === 'contractor' && (
+                            <span style={{ marginLeft: 6, fontSize: 10, background: '#dbeafe', color: '#1d4ed8', padding: '1px 5px', borderRadius: 4 }}>하청</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#9ca3af' }}>{emp.contact}</div>
+                      </div>
+                      {existing > 0 && (
+                        <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <AlertTriangle size={10} /> {existing}건
+                        </span>
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 자동 배분 버튼 */}
+            <button
+              onClick={handlePreview}
+              disabled={loading || selectedEmpIds.length === 0}
+              style={{
+                width: '100%', padding: 12, borderRadius: 6, background: loading ? '#d1d5db' : BRAND, color: '#fff',
+                border: 'none', cursor: loading ? 'default' : 'pointer', fontWeight: 600, fontSize: 14,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+              }}
+            >
+              {loading ? (
+                <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> {loadingMsg || '처리 중...'}</>
+              ) : (
+                <><Shuffle size={16} /> 자동 배분</>
+              )}
+            </button>
+
+            {/* 배분 현황 */}
+            {statusData && fileGroups.length > 0 && (
+              <div style={{ marginTop: 20, padding: 12, background: '#f3f4f6', borderRadius: 6 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: '#111827' }}>기존 배분 현황</p>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>
+                  {fileGroups.map(fg => (
+                    <div key={fg.file_id} style={{ marginBottom: 4 }}>
+                      {fg.filename}: {fg.total}건
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 우측 배분 안내 */}
+          <div style={{ flex: 1, padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 14 }}>
+            <div style={{ textAlign: 'center' }}>
+              <Shuffle size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+              <p>설정 후 "자동 배분" 버튼을 클릭하여</p>
+              <p>배분 결과를 미리보고 확정합니다.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -363,10 +640,6 @@ export default function Assign() {
   if (mode === 'preview' && preview) {
     const tabEmp = preview.assignments.find(a => a.employee_id === selectedTabEmpId)
     const tabStations = tabEmp?.stations || []
-    const tabStats = {
-      total: tabStations.length,
-      pending: tabStations.filter(s => !s.scheduled_date).length,
-    }
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>

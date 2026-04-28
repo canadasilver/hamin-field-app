@@ -71,6 +71,8 @@ export interface Station {
   lat: number | null
   lng: number | null
   status: string
+  region_zone?: 'north' | 'south' | null
+  region_detail?: string | null
   created_at: string
   updated_at: string
 }
@@ -86,6 +88,8 @@ export interface Employee {
   vehicle_number: string | null
   memo: string | null
   is_active: boolean
+  type: 'employee' | 'contractor'
+  company_name?: string | null
   created_at: string
   updated_at: string
 }

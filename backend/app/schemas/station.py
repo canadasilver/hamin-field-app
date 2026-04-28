@@ -38,6 +38,8 @@ class StationResponse(BaseModel):
     lat: float | None = None
     lng: float | None = None
     status: str = "pending"
+    region_zone: str | None = None
+    region_detail: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

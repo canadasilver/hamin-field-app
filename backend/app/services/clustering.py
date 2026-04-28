@@ -200,7 +200,7 @@ def assign_stations(
     unavailable_map = unavailable_map or {}
 
     COLORS = [
-        "#E4002B", "#3B82F6", "#22C55E", "#F59E0B",
+        "#215288", "#3B82F6", "#22C55E", "#F59E0B",
         "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16",
         "#F97316", "#14B8A6", "#6366F1", "#EF4444",
     ]
