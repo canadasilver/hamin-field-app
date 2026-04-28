@@ -95,6 +95,7 @@ export default function Employees() {
     const f = createForm
     if (f.type === 'employee' && (!f.name.trim() || !f.contact.trim())) { setError('이름과 연락처를 입력하세요.'); return }
     if (f.type === 'contractor' && !f.company_name.trim()) { setError('업체명을 입력하세요.'); return }
+    if (f.type === 'contractor' && !f.contact.trim()) { setError('연락처를 입력하세요.'); return }
     if (!f.username.trim()) { setError('아이디를 입력하세요.'); return }
     if (!f.password) { setError('비밀번호를 입력하세요.'); return }
     if (f.type === 'employee' && f.password !== f.confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return }
@@ -103,7 +104,7 @@ export default function Employees() {
     try {
       await employeeApi.create({
         name: f.type === 'contractor' ? f.company_name.trim() : f.name.trim(),
-        contact: f.type === 'contractor' ? '-' : f.contact.trim(),
+        contact: f.contact.trim(),
         type: f.type,
         company_name: f.type === 'contractor' ? f.company_name.trim() || null : null,
         username: f.username.trim(),
@@ -274,9 +275,14 @@ export default function Employees() {
               </FormField>
             </>
           ) : (
-            <FormField label="업체명 *">
-              <input value={createForm.company_name} onChange={e => setCreateForm({ ...createForm, company_name: e.target.value })} style={inputStyle} placeholder="하청업체명" />
-            </FormField>
+            <>
+              <FormField label="업체명 *">
+                <input value={createForm.company_name} onChange={e => setCreateForm({ ...createForm, company_name: e.target.value })} style={inputStyle} placeholder="하청업체명" />
+              </FormField>
+              <FormField label="연락처 *">
+                <input type="tel" value={createForm.contact} onChange={e => setCreateForm({ ...createForm, contact: e.target.value })} style={inputStyle} placeholder="010-0000-0000" />
+              </FormField>
+            </>
           )}
 
           <FormField label="아이디 *">
@@ -322,8 +328,8 @@ export default function Employees() {
             <button onClick={closeModal} style={cancelBtnStyle}>취소</button>
             <button
               onClick={handleCreate}
-              disabled={saving || (createForm.type === 'employee' ? !createForm.name.trim() || pwMismatch : !createForm.company_name.trim())}
-              style={saveBtnStyle(saving || (createForm.type === 'employee' ? !createForm.name.trim() || pwMismatch : !createForm.company_name.trim()))}
+              disabled={saving || (createForm.type === 'employee' ? !createForm.name.trim() || pwMismatch : !createForm.company_name.trim() || !createForm.contact.trim())}
+              style={saveBtnStyle(saving || (createForm.type === 'employee' ? !createForm.name.trim() || pwMismatch : !createForm.company_name.trim() || !createForm.contact.trim()))}
             >
               {saving ? '등록 중...' : '등록'}
             </button>
